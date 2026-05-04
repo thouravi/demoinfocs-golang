@@ -72,9 +72,9 @@ func newField(serializers map[string]*serializer, ser *msg.CSVCMsg_FlattenedSeri
 	}
 
 	if len(f.PolymorphicTypes) > 0 {
-		// Build combined slice: [0] = base serializer, [1..N] = polymorphic types.
-		// This mirrors Clarity's polymorphicTypes array, so the ubitvar read from
-		// the bitstream directly indexes this slice (0 = base, 1 = first poly type, etc.).
+		// Build combined slice: [0] = default/field serializer, [1..N] = polymorphic alternatives.
+		// The ubitvar read from the bitstream is a direct index into this slice, where
+		// 0 selects the field's own serializer and 1..N select the polymorphic variants.
 		x.polyTypes = make([]*serializer, len(f.PolymorphicTypes)+1)
 		x.polyTypes[0] = serializers[resolve(f.FieldSerializerNameSym)]
 
