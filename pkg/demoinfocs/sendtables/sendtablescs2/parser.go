@@ -68,6 +68,9 @@ type Parser struct {
 	pathCache                   []*fieldPath
 	tuplesCache                 []tuple
 	packetEntitiesPanicWarnFunc func(error)
+	// polyCount is a global counter for assigning unique polySerializerIds to
+	// polymorphic fixed-table fields as they are encountered during ParsePacket.
+	polyCount int
 }
 
 func (p *Parser) ReadEnterPVS(r *bit.BitReader, index int, entities map[int]st.Entity, slot int) st.Entity { //nolint:revive
@@ -135,6 +138,7 @@ func (p *Parser) OnDemoClassInfo(m *msg.CDemoClassInfo) error {
 			classId:    classId,
 			name:       networkName,
 			serializer: p.serializers[networkName],
+			polyCount:  p.polyCount,
 			fpNameCache:  &fpNameTreeCache{},
 			fpFlatCache:  make(map[uint64]string),
 		}
@@ -206,6 +210,12 @@ func (p *Parser) ParsePacket(b []byte) error {
 				if field.serializer != nil || len(field.polyTypes) > 0 { //nolint:gocritic
 					if field.fieldType.pointer || pointerTypes[field.fieldType.baseType] || len(field.polyTypes) > 0 {
 						field.setModel(fieldModelFixedTable)
+						if len(field.polyTypes) > 0 {
+							// Assign a unique per-entity slot for this polymorphic
+							// pointer's active serializer.
+							field.polySerializerId = p.polyCount
+							p.polyCount++
+						}
 					} else {
 						field.setModel(fieldModelVariableTable)
 					}

@@ -17,6 +17,7 @@ type class struct {
 	classId         int32 //nolint:revive
 	name            string
 	serializer      *serializer
+	polyCount       int // number of polymorphic pointer field IDs reachable in this class
 	createdHandlers []st.EntityCreatedHandler
 	fpNameCache     *fpNameTreeCache
 	// fpFlatCache provides O(1) lookup for the common case: depth ≤ 3 and
@@ -86,49 +87,56 @@ func fpFlatKey(fp *fieldPath) (uint64, bool) {
 	return key, true
 }
 
-func (c *class) getNameForFieldPath(fp *fieldPath) string {
-	if key, ok := fpFlatKey(fp); ok {
-		if name, hit := c.fpFlatCache[key]; hit {
+func (c *class) getNameForFieldPath(fp *fieldPath, ps []*serializer) string {
+	if ps == nil {
+		// No polymorphic fields: use the shared class-level caches.
+		if key, ok := fpFlatKey(fp); ok {
+			if name, hit := c.fpFlatCache[key]; hit {
+				return name
+			}
+			name := strings.Join(c.serializer.getNameForFieldPath(fp, 0, nil), ".")
+			c.fpFlatCache[key] = name
 			return name
 		}
-		name := strings.Join(c.serializer.getNameForFieldPath(fp, 0), ".")
-		c.fpFlatCache[key] = name
-		return name
-	}
 
-	// Slow path: deep or large-component path — use the pointer tree.
-	currentCacheNode := c.fpNameCache
-	for i := 0; i <= fp.last; i++ {
-		pos := fp.path[i]
-		if pos >= len(currentCacheNode.next) {
-			needed := pos + 1
-			if cap(currentCacheNode.next) >= needed {
-				currentCacheNode.next = currentCacheNode.next[:needed]
-			} else {
-				newCap := needed * 2
-				if newCap < 8 {
-					newCap = 8
+		// Slow path: deep or large-component path — use the pointer tree.
+		currentCacheNode := c.fpNameCache
+		for i := 0; i <= fp.last; i++ {
+			pos := fp.path[i]
+			if pos >= len(currentCacheNode.next) {
+				needed := pos + 1
+				if cap(currentCacheNode.next) >= needed {
+					currentCacheNode.next = currentCacheNode.next[:needed]
+				} else {
+					newCap := needed * 2
+					if newCap < 8 {
+						newCap = 8
+					}
+					newNext := make([]*fpNameTreeCache, needed, newCap)
+					copy(newNext, currentCacheNode.next)
+					currentCacheNode.next = newNext
 				}
-				newNext := make([]*fpNameTreeCache, needed, newCap)
-				copy(newNext, currentCacheNode.next)
-				currentCacheNode.next = newNext
 			}
+			if currentCacheNode.next[pos] == nil {
+				currentCacheNode.next[pos] = &fpNameTreeCache{}
+			}
+			currentCacheNode = currentCacheNode.next[pos]
 		}
-		if currentCacheNode.next[pos] == nil {
-			currentCacheNode.next[pos] = &fpNameTreeCache{}
+		if currentCacheNode.name == "" {
+			currentCacheNode.name = strings.Join(c.serializer.getNameForFieldPath(fp, 0, nil), ".")
 		}
-		currentCacheNode = currentCacheNode.next[pos]
+		return currentCacheNode.name
 	}
-	if currentCacheNode.name == "" {
-		currentCacheNode.name = strings.Join(c.serializer.getNameForFieldPath(fp, 0), ".")
-	}
-	return currentCacheNode.name
+
+	// Polymorphic entity: skip class-level caches because the active type
+	// varies per entity and the same field path can resolve to different names.
+	return strings.Join(c.serializer.getNameForFieldPath(fp, 0, ps), ".")
 }
 
-func (c *class) getFieldPathForName(fp *fieldPath, name string) bool {
-	return c.serializer.getFieldPathForName(fp, name)
+func (c *class) getFieldPathForName(fp *fieldPath, name string, ps []*serializer) bool {
+	return c.serializer.getFieldPathForName(fp, name, ps)
 }
 
-func (c *class) getFieldPaths(fp *fieldPath, state *fieldState) []*fieldPath {
-	return c.serializer.getFieldPaths(fp, state)
+func (c *class) getFieldPaths(fp *fieldPath, state *fieldState, ps []*serializer) []*fieldPath {
+	return c.serializer.getFieldPaths(fp, state, ps)
 }

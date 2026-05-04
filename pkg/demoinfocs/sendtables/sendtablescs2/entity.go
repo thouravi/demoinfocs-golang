@@ -22,6 +22,11 @@ type Entity struct {
 	state   *fieldState
 	fpCache map[string]*fieldPath
 	fpNoop  map[string]bool
+	// polySerializers holds the currently active serializer for each polymorphic
+	// pointer field, indexed by field.polySerializerId. Nil entries mean the
+	// pointer is inactive. This slice is per-entity so that two entities of the
+	// same class can hold different active types simultaneously.
+	polySerializers []*serializer
 
 	onCreateFinished []func()
 	onDestroy        []func()
@@ -47,8 +52,8 @@ func (e *Entity) SerialNum() int {
 }
 
 func (e *Entity) Properties() (out []st.Property) {
-	for _, fp := range e.class.getFieldPaths(newFieldPath(), e.state) {
-		out = append(out, e.Property(e.class.getNameForFieldPath(fp)))
+	for _, fp := range e.class.getFieldPaths(newFieldPath(), e.state, e.polySerializers) {
+		out = append(out, e.Property(e.class.getNameForFieldPath(fp, e.polySerializers)))
 	}
 
 	return
@@ -87,7 +92,7 @@ func (p property) OnUpdate(handler st.PropertyUpdateHandler) {
 func (e *Entity) addHandlerByFP(name string, handler st.PropertyUpdateHandler) {
 	fp := newFieldPath()
 	defer fp.release()
-	if !e.class.getFieldPathForName(fp, name) {
+	if !e.class.getFieldPathForName(fp, name, e.polySerializers) {
 		return
 	}
 	key, ok := fpFlatKey(fp)
@@ -149,7 +154,16 @@ func (p property) Bind(variable any, t st.PropertyValueType) {
 
 func (e *Entity) Property(name string) st.Property {
 	if e.propCache[name] == nil {
-		ok := e.class.serializer.checkFieldName(name)
+		var ok bool
+		if len(e.polySerializers) == 0 {
+			// Fast path for entities without polymorphic pointer fields.
+			ok = e.class.serializer.checkFieldName(name)
+		} else {
+			// Poly-aware path: use the active serializers to check existence.
+			fp := newFieldPath()
+			ok = e.class.getFieldPathForName(fp, name, e.polySerializers)
+			fp.release()
+		}
 		if !ok {
 			return nil
 		}
@@ -277,6 +291,7 @@ func newEntity(index, serial int32, class *class) *Entity {
 		state:            &fieldState{state: make([]any, 0, 16)},
 		fpCache:          make(map[string]*fieldPath),
 		fpNoop:           make(map[string]bool),
+		polySerializers:  make([]*serializer, class.polyCount),
 		onCreateFinished: nil,
 		onDestroy:        nil,
 		updateHandlers:   make(map[string][]st.PropertyUpdateHandler),
@@ -286,11 +301,11 @@ func newEntity(index, serial int32, class *class) *Entity {
 
 // String returns a human identifiable string for the Entity
 func (e *Entity) String() string {
-	paths := e.class.getFieldPaths(newFieldPath(), e.state)
+	paths := e.class.getFieldPaths(newFieldPath(), e.state, e.polySerializers)
 	props := make([]string, len(paths))
 
 	for _, fp := range paths {
-		props = append(props, fmt.Sprintf("%s: %v", e.class.getNameForFieldPath(fp), e.state.get(fp)))
+		props = append(props, fmt.Sprintf("%s: %v", e.class.getNameForFieldPath(fp, e.polySerializers), e.state.get(fp)))
 	}
 
 	return fmt.Sprintf("%d <%s>\n %s", e.index, e.class.name, strings.Join(props, "\n "))
@@ -299,8 +314,8 @@ func (e *Entity) String() string {
 // Map returns a map of current entity state as key-value pairs
 func (e *Entity) Map() map[string]interface{} {
 	values := make(map[string]interface{})
-	for _, fp := range e.class.getFieldPaths(newFieldPath(), e.state) {
-		values[e.class.getNameForFieldPath(fp)] = e.state.get(fp)
+	for _, fp := range e.class.getFieldPaths(newFieldPath(), e.state, e.polySerializers) {
+		values[e.class.getNameForFieldPath(fp, e.polySerializers)] = e.state.get(fp)
 	}
 	return values
 }
@@ -315,7 +330,7 @@ func (e *Entity) Get(name string) interface{} {
 	}
 
 	fp := newFieldPath()
-	if !e.class.getFieldPathForName(fp, name) {
+	if !e.class.getFieldPathForName(fp, name, e.polySerializers) {
 		e.fpNoop[name] = true
 		fp.release()
 		return nil
@@ -433,9 +448,28 @@ func (e *Entity) readFields(r *reader, paths *[]*fieldPath) {
 	n := readFieldPaths(r, paths)
 
 	for _, fp := range (*paths)[:n] {
-		decoder, updateCollection := e.class.serializer.getDecoderAndCollection(fp, 0)
+		decoder, updateCollection := e.class.serializer.getDecoderAndCollection(fp, 0, e.polySerializers)
+
+		if decoder == nil {
+			// Polymorphic pointer not yet activated; skip sub-field updates.
+			continue
+		}
 
 		val := decoder(r)
+
+		// Intercept polymorphic pointer base updates: store the newly selected
+		// serializer per entity and convert to a bool for entity state storage.
+		if pu, ok := val.(*polyUpdate); ok {
+			if e.polySerializers[pu.id] != pu.ser {
+				e.polySerializers[pu.id] = pu.ser
+				// Invalidate per-entity caches: the active type changed, so cached
+				// field paths and property lookups may no longer be valid.
+				clear(e.fpCache)
+				clear(e.fpNoop)
+				clear(e.propCache)
+			}
+			val = pu.ser != nil
+		}
 
 		if updateCollection { //nolint:nestif
 			newLen := val.(uint64)
@@ -499,7 +533,7 @@ func (e *Entity) dispatchUpdate(fp *fieldPath, val any) {
 		}
 	}
 	// Fallback: deep/large path — look up by name
-	name := e.class.getNameForFieldPath(fp)
+	name := e.class.getNameForFieldPath(fp, e.polySerializers)
 	for _, h := range e.updateHandlers[name] {
 		h(st.PropertyValue{Any: val})
 	}

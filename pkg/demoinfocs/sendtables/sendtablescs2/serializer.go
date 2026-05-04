@@ -27,18 +27,18 @@ func newSerializer(name string, version int32) *serializer {
 	}
 }
 
-func (s *serializer) getNameForFieldPath(fp *fieldPath, pos int) []string {
-	return s.fields[fp.path[pos]].getNameForFieldPath(fp, pos+1)
+func (s *serializer) getNameForFieldPath(fp *fieldPath, pos int, ps []*serializer) []string {
+	return s.fields[fp.path[pos]].getNameForFieldPath(fp, pos+1, ps)
 }
 
 // getDecoderAndCollection is a single-pass alternative to calling
 // getFieldForFieldPath + getDecoderForFieldPath2 separately.
 // Returns the decoder and whether this update requires fieldState handling.
-func (s *serializer) getDecoderAndCollection(fp *fieldPath, pos int) (fieldDecoder, bool) {
-	return s.fields[fp.path[pos]].getDecoderAndCollection(fp, pos+1)
+func (s *serializer) getDecoderAndCollection(fp *fieldPath, pos int, ps []*serializer) (fieldDecoder, bool) {
+	return s.fields[fp.path[pos]].getDecoderAndCollection(fp, pos+1, ps)
 }
 
-func (s *serializer) getFieldPathForName(fp *fieldPath, name string) bool {
+func (s *serializer) getFieldPathForName(fp *fieldPath, name string, ps []*serializer) bool {
 	if s.fieldIndexes[name] != nil {
 		fp.path[fp.last] = s.fieldIndexes[name].index
 		return true
@@ -51,19 +51,19 @@ func (s *serializer) getFieldPathForName(fp *fieldPath, name string) bool {
 			fp.path[fp.last] = s.fieldIndexes[nameBeforeDot].index
 			fp.last++
 			f := s.fieldIndexes[nameBeforeDot].field
-			return f.getFieldPathForName(fp, name[len(f.varName)+1:])
+			return f.getFieldPathForName(fp, name[len(f.varName)+1:], ps)
 		}
 	}
 
 	return false
 }
 
-func (s *serializer) getFieldPaths(fp *fieldPath, state *fieldState) []*fieldPath {
+func (s *serializer) getFieldPaths(fp *fieldPath, state *fieldState, ps []*serializer) []*fieldPath {
 	results := make([]*fieldPath, 0, 4)
 
 	for i, f := range s.fields {
 		fp.path[fp.last] = i
-		results = append(results, f.getFieldPaths(fp, state)...)
+		results = append(results, f.getFieldPaths(fp, state, ps)...)
 	}
 
 	return results
@@ -82,7 +82,7 @@ func (s *serializer) addField(f *field) {
 func (s *serializer) checkFieldName(name string) bool {
 	ok, exists := s.fieldNameChecks[name]
 	if !exists {
-		ok = s.getFieldPathForName(newFieldPath(), name)
+		ok = s.getFieldPathForName(newFieldPath(), name, nil)
 		s.fieldNameChecks[name] = ok
 	}
 
