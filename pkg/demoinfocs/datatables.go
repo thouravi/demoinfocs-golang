@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"strings"
 
 	"github.com/golang/geo/r3"
 	"github.com/markus-wa/go-unassert"
@@ -391,11 +390,28 @@ func (p *parser) getOrCreatePlayerFromControllerEntity(controllerEntity st.Entit
 	controllerEntityID := controllerEntity.ID()
 	p.gameState.playerControllerEntities[controllerEntityID] = controllerEntity
 
-	rp := p.rawPlayers[controllerEntityID-1]
+	isBot := controllerEntity.PropertyValueMust("m_steamID").UInt64() == 0
+
+	var rp *common.PlayerInfo
+
+	for _, r := range p.rawPlayers {
+		if !isBot && !r.IsFakePlayer && r.XUID != 0 && r.XUID == controllerEntity.Property("m_steamID").Value().UInt64() {
+			rp = r
+		}
+
+		if isBot && r.IsFakePlayer && r.XUID == 0 && r.Name == controllerEntity.PropertyValueMust("m_iszPlayerName").String() {
+			rp = r
+		}
+	}
+
+	if rp == nil {
+		rp = p.rawPlayers[controllerEntityID-1]
+	}
+
 	_, player := p.getOrCreatePlayer(controllerEntityID, rp)
 	player.Entity = controllerEntity
 	player.EntityID = controllerEntityID
-	player.IsBot = controllerEntity.PropertyValueMust("m_steamID").String() == "0"
+	player.IsBot = isBot
 
 	if player.IsBot {
 		player.Name = controllerEntity.PropertyValueMust("m_iszPlayerName").String()
@@ -659,7 +675,7 @@ func (p *parser) bindWeapons() {
 		isEquipmentClass := hasClipProp && hasIndexProp
 
 		if isEquipmentClass {
-			sc.OnEntityCreated(p.bindWeaponS2)
+			sc.OnEntityCreated(p.bindWeapon)
 		}
 
 		if hasThrower {
@@ -838,7 +854,7 @@ func (p *parser) nadeProjectileDestroyed(proj *common.GrenadeProjectile) {
 	}
 }
 
-func (p *parser) bindWeaponS2(entity st.Entity) {
+func (p *parser) bindWeapon(entity st.Entity) {
 	entityID := entity.ID()
 	itemIndexVal := entity.PropertyValueMust("m_iItemDefinitionIndex")
 
@@ -955,58 +971,6 @@ func (p *parser) bindWeaponS2(entity st.Entity) {
 			equipment.Owner.IsReloading = false
 		}
 	})
-}
-
-func (p *parser) bindWeapon(entity st.Entity, wepType common.EquipmentType) {
-	entityID := entity.ID()
-
-	eq, eqExists := p.gameState.weapons[entityID]
-	if !eqExists {
-		eq = common.NewEquipment(wepType)
-		p.gameState.weapons[entityID] = eq
-	} else {
-		// If we are here, we already have a player that holds this weapon
-		// so the zero-valued Equipment instance was already created in bindPlayer().
-		// In this case we should create update the weapon type
-		// but keep the same memory address so player's rawWeapons would still have a pointer to it
-		eq.Type = wepType
-	}
-
-	eq.Entity = entity
-
-	entity.OnDestroy(func() {
-		delete(p.gameState.weapons, entityID)
-	})
-
-	entity.Property("m_iClip1").OnUpdate(func(val st.PropertyValue) {
-		if eq.Owner != nil {
-			eq.Owner.IsReloading = false
-		}
-	})
-
-	// Detect alternative weapons (P2k -> USP, M4A4 -> M4A1-S etc.)
-	modelIndex := entity.Property("m_nModelIndex").Value().Int()
-	eq.OriginalString = p.modelPreCache[modelIndex]
-
-	wepFix := func(altName string, alt common.EquipmentType) {
-		// Check 'altName' first because otherwise the m4a1_s is recognized as m4a4
-		if strings.Contains(eq.OriginalString, altName) {
-			eq.Type = alt
-		}
-	}
-
-	switch eq.Type {
-	case common.EqP2000:
-		wepFix("_pist_223", common.EqUSP)
-	case common.EqM4A4:
-		wepFix("_rif_m4a1_s", common.EqM4A1)
-	case common.EqP250:
-		wepFix("_pist_cz_75", common.EqCZ)
-	case common.EqDeagle:
-		wepFix("_pist_revolver", common.EqRevolver)
-	case common.EqMP7:
-		wepFix("_smg_mp5sd", common.EqMP5)
-	}
 }
 
 func (p *parser) bindNewInferno(entity st.Entity) {

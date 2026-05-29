@@ -317,6 +317,8 @@ func (p *parser) handleDemoPacket(pack *msg.CDemoPacket) {
 		p.pendingMessagesCache = append(p.pendingMessagesCache, pendingMessage{t, buf})
 	}
 
+	p.poolBitReader(r)
+
 	slices.SortStableFunc(p.pendingMessagesCache, func(a, b pendingMessage) int {
 		return a.priority() - b.priority()
 	})

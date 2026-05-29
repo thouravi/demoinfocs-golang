@@ -312,8 +312,8 @@ func (e *Entity) String() string {
 }
 
 // Map returns a map of current entity state as key-value pairs
-func (e *Entity) Map() map[string]interface{} {
-	values := make(map[string]interface{})
+func (e *Entity) Map() map[string]any {
+	values := make(map[string]any)
 	for _, fp := range e.class.getFieldPaths(newFieldPath(), e.state, e.polySerializers) {
 		values[e.class.getNameForFieldPath(fp, e.polySerializers)] = e.state.get(fp)
 	}
@@ -321,7 +321,7 @@ func (e *Entity) Map() map[string]interface{} {
 }
 
 // Get returns the current value of the Entity state for the given key
-func (e *Entity) Get(name string) interface{} {
+func (e *Entity) Get(name string) any {
 	if fp, ok := e.fpCache[name]; ok {
 		return e.state.get(fp)
 	}

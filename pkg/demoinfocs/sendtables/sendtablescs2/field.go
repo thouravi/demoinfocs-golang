@@ -108,7 +108,7 @@ func (f *field) setModel(model int) {
 			// per entity rather than on this shared field object.
 			polyTypes := f.polyTypes
 			polyId := f.polySerializerId
-			f.baseDecoder = func(r *reader) interface{} {
+			f.baseDecoder = func(r *reader) any {
 				if r.readBoolean() {
 					return &polyUpdate{id: polyId, ser: polyTypes[r.readUBitVar()]}
 				}
