@@ -23,7 +23,7 @@ type Entity struct {
 	fpCache map[string]*fieldPath
 	fpNoop  map[string]bool
 	// polySerializers holds the currently active serializer for each polymorphic
-	// pointer field, indexed by field.polySerializerId. Nil entries mean the
+	// pointer field, indexed by field.polySerializerID. Nil entries mean the
 	// pointer is inactive. This slice is per-entity so that two entities of the
 	// same class can hold different active types simultaneously.
 	polySerializers []*serializer
@@ -39,18 +39,22 @@ type Entity struct {
 	propCache    map[string]st.Property
 }
 
+// ServerClass returns the server class of the entity.
 func (e *Entity) ServerClass() st.ServerClass {
 	return e.class
 }
 
+// ID returns the entity's index in the entity list.
 func (e *Entity) ID() int {
 	return int(e.index)
 }
 
+// SerialNum returns the entity's serial number.
 func (e *Entity) SerialNum() int {
 	return int(e.serial)
 }
 
+// Properties returns all properties of the entity.
 func (e *Entity) Properties() (out []st.Property) {
 	for _, fp := range e.class.getFieldPaths(newFieldPath(), e.state, e.polySerializers) {
 		out = append(out, e.Property(e.class.getNameForFieldPath(fp, e.polySerializers)))
@@ -152,6 +156,7 @@ func (p property) Bind(variable any, t st.PropertyValueType) {
 	p.entity.hasHandlers = true
 }
 
+// Property returns the named property of the entity, or nil if not found.
 func (e *Entity) Property(name string) st.Property {
 	if e.propCache[name] == nil {
 		var ok bool
@@ -177,10 +182,12 @@ func (e *Entity) Property(name string) st.Property {
 	return e.propCache[name]
 }
 
+// BindProperty binds a property to a variable for automatic updates.
 func (e *Entity) BindProperty(prop string, variable any, t st.PropertyValueType) {
 	e.Property(prop).Bind(variable, t)
 }
 
+// PropertyValue returns the value of the named property and whether it exists.
 func (e *Entity) PropertyValue(name string) (st.PropertyValue, bool) {
 	prop := e.Property(name)
 	if prop == nil {
@@ -192,6 +199,7 @@ func (e *Entity) PropertyValue(name string) (st.PropertyValue, bool) {
 	return v, true
 }
 
+// PropertyValueMust returns the value of the named property, panicking if not found.
 func (e *Entity) PropertyValueMust(name string) st.PropertyValue {
 	val, ok := e.PropertyValue(name)
 	if !ok {
@@ -221,6 +229,7 @@ func coordFromCell(cell uint64, offset float32) float64 {
 	return cellCoord + float64(offset)
 }
 
+// Position returns the entity's world position.
 func (e *Entity) Position() r3.Vector {
 	cellXVal := e.Property(propCellX).Value()
 	cellYVal := e.Property(propCellY).Value()
@@ -247,6 +256,7 @@ func (e *Entity) Position() r3.Vector {
 	}
 }
 
+// OnPositionUpdate registers a handler that is called whenever the entity's position changes.
 func (e *Entity) OnPositionUpdate(h func(pos r3.Vector)) {
 	pos := new(r3.Vector)
 	firePosUpdate := func(st.PropertyValue) {
@@ -265,10 +275,12 @@ func (e *Entity) OnPositionUpdate(h func(pos r3.Vector)) {
 	e.Property(propVecZ).OnUpdate(firePosUpdate)
 }
 
+// OnDestroy registers a handler that is called when the entity is destroyed.
 func (e *Entity) OnDestroy(delegate func()) {
 	e.onDestroy = append(e.onDestroy, delegate)
 }
 
+// Destroy marks the entity as inactive and fires all OnDestroy handlers.
 func (e *Entity) Destroy() {
 	e.active = false
 
@@ -277,6 +289,7 @@ func (e *Entity) Destroy() {
 	}
 }
 
+// OnCreateFinished registers a handler that is called after entity creation is complete.
 func (e *Entity) OnCreateFinished(delegate func()) {
 	e.onCreateFinished = append(e.onCreateFinished, delegate)
 }
@@ -444,7 +457,8 @@ func (p *Parser) FilterEntity(fb func(*Entity) bool) []*Entity {
 	return entities
 }
 
-func (e *Entity) readFields(r *reader, paths *[]*fieldPath) { //nolint:gocognit
+//nolint:gocognit
+func (e *Entity) readFields(r *reader, paths *[]*fieldPath) {
 	n := readFieldPaths(r, paths)
 
 	for _, fp := range (*paths)[:n] {
@@ -539,7 +553,7 @@ func (e *Entity) dispatchUpdate(fp *fieldPath, val any) {
 	}
 }
 
-// Internal Callback for OnCSVCMsg_PacketEntities.
+// OnPacketEntities is an internal callback for OnCSVCMsg_PacketEntities.
 //
 //nolint:gocognit
 func (p *Parser) OnPacketEntities(m *msg.CSVCMsg_PacketEntities) error {
@@ -672,6 +686,7 @@ func (p *Parser) OnPacketEntities(m *msg.CSVCMsg_PacketEntities) error {
 
 		if t.op&st.EntityOpCreated != 0 {
 			props := maps.Keys(e.updateHandlers)
+			//nolint:godox
 			slices.Sort(props) // TODO: should either be ordered by prop-order or handler registration order
 
 			for _, prop := range props {
@@ -685,6 +700,7 @@ func (p *Parser) OnPacketEntities(m *msg.CSVCMsg_PacketEntities) error {
 	}
 
 	if r.remBytes() > 1 || r.bitCount > 7 { //nolint:revive,staticcheck
+		//nolint:godox
 		// FIXME: maybe we should panic("didn't consume all data")
 	}
 

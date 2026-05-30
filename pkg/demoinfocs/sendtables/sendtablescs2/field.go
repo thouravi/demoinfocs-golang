@@ -16,7 +16,7 @@ const (
 )
 
 // polyUpdate is returned by the base decoder of a polymorphic fixed-table field.
-// id is the field's polySerializerId; ser is the newly selected serializer
+// id is the field's polySerializerID; ser is the newly selected serializer
 // (nil when the pointer is inactive / boolean was false).
 type polyUpdate struct {
 	id  int
@@ -38,10 +38,10 @@ type field struct {
 	serializer        *serializer
 	model             int
 	polyTypes         []*serializer
-	// polySerializerId is ≥ 0 for polymorphic fixed-table fields; -1 otherwise.
+	// polySerializerID is ≥ 0 for polymorphic fixed-table fields; -1 otherwise.
 	// It indexes into the per-entity polySerializers slice, so the active
 	// serializer is tracked per entity rather than on the shared field object.
-	polySerializerId int
+	polySerializerID int
 
 	decoder      fieldDecoder
 	baseDecoder  fieldDecoder
@@ -68,7 +68,7 @@ func newField(serializers map[string]*serializer, ser *msg.CSVCMsg_FlattenedSeri
 		lowValue:          f.LowValue,
 		highValue:         f.HighValue,
 		model:             fieldModelSimple,
-		polySerializerId:  -1,
+		polySerializerID:  -1,
 	}
 
 	if len(f.PolymorphicTypes) > 0 {
@@ -79,7 +79,7 @@ func newField(serializers map[string]*serializer, ser *msg.CSVCMsg_FlattenedSeri
 		x.polyTypes[0] = serializers[resolve(f.FieldSerializerNameSym)]
 
 		for i, t := range f.PolymorphicTypes {
-			x.polyTypes[i+1] = serializers[resolve(t.PolymorphicFieldSerializerNameSym)] //nolint:gosec
+			x.polyTypes[i+1] = serializers[resolve(t.PolymorphicFieldSerializerNameSym)]
 		}
 	}
 
@@ -107,12 +107,12 @@ func (f *field) setModel(model int) {
 			// Returns a *polyUpdate so the active serializer can be stored
 			// per entity rather than on this shared field object.
 			polyTypes := f.polyTypes
-			polyId := f.polySerializerId
+			polyID := f.polySerializerID
 			f.baseDecoder = func(r *reader) any {
 				if r.readBoolean() {
-					return &polyUpdate{id: polyId, ser: polyTypes[r.readUBitVar()]}
+					return &polyUpdate{id: polyID, ser: polyTypes[r.readUBitVar()]}
 				}
-				return &polyUpdate{id: polyId, ser: nil}
+				return &polyUpdate{id: polyID, ser: nil}
 			}
 		}
 
@@ -143,8 +143,8 @@ func (f *field) getNameForFieldPath(fp *fieldPath, pos int, ps []*serializer) []
 	case fieldModelFixedTable:
 		if fp.last >= pos {
 			ser := f.serializer
-			if f.polySerializerId >= 0 && ps != nil {
-				ser = ps[f.polySerializerId]
+			if f.polySerializerID >= 0 && ps != nil {
+				ser = ps[f.polySerializerID]
 			}
 			if ser != nil {
 				x = append(x, ser.getNameForFieldPath(fp, pos, ps)...)
@@ -182,8 +182,8 @@ func (f *field) getDecoderAndCollection(fp *fieldPath, pos int, ps []*serializer
 			return f.baseDecoder, false // base decoder but fixed, no fieldState update
 		}
 		ser := f.serializer
-		if f.polySerializerId >= 0 && ps != nil {
-			ser = ps[f.polySerializerId]
+		if f.polySerializerID >= 0 && ps != nil {
+			ser = ps[f.polySerializerID]
 		}
 		if ser == nil {
 			return nil, false // polymorphic pointer not yet activated
@@ -217,8 +217,8 @@ func (f *field) getFieldPathForName(fp *fieldPath, name string, ps []*serializer
 
 	case fieldModelFixedTable:
 		ser := f.serializer
-		if f.polySerializerId >= 0 && ps != nil {
-			ser = ps[f.polySerializerId]
+		if f.polySerializerID >= 0 && ps != nil {
+			ser = ps[f.polySerializerID]
 		}
 		if ser == nil {
 			return false
@@ -243,7 +243,8 @@ func (f *field) getFieldPathForName(fp *fieldPath, name string, ps []*serializer
 	return false
 }
 
-func (f *field) getFieldPaths(fp *fieldPath, state *fieldState, ps []*serializer) []*fieldPath { //nolint:gocognit
+//nolint:gocognit
+func (f *field) getFieldPaths(fp *fieldPath, state *fieldState, ps []*serializer) []*fieldPath {
 	x := make([]*fieldPath, 0, 1)
 
 	switch f.model {
@@ -262,8 +263,8 @@ func (f *field) getFieldPaths(fp *fieldPath, state *fieldState, ps []*serializer
 	case fieldModelFixedTable:
 		if sub, ok := state.get(fp).(*fieldState); ok {
 			ser := f.serializer
-			if f.polySerializerId >= 0 && ps != nil {
-				ser = ps[f.polySerializerId]
+			if f.polySerializerID >= 0 && ps != nil {
+				ser = ps[f.polySerializerID]
 			}
 			if ser != nil {
 				fp.last++

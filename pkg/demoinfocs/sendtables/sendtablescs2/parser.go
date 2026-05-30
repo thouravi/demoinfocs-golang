@@ -5,11 +5,10 @@ import (
 	"math"
 	"strings"
 
-	"google.golang.org/protobuf/proto"
-
 	bit "github.com/markus-wa/demoinfocs-golang/v5/internal/bitread"
 	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/msg"
 	st "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/sendtables"
+	"google.golang.org/protobuf/proto"
 )
 
 /*
@@ -56,6 +55,7 @@ type tuple struct {
 	op  st.EntityOp
 }
 
+// Parser parses CS2 send tables (FlattenedSerializer + PacketEntities).
 type Parser struct {
 	serializers                 map[string]*serializer
 	classIdSize                 uint32 //nolint:revive
@@ -68,7 +68,7 @@ type Parser struct {
 	pathCache                   []*fieldPath
 	tuplesCache                 []tuple
 	packetEntitiesPanicWarnFunc func(error)
-	// polyCount is a global counter for assigning unique polySerializerIds to
+	// polyCount is a global counter for assigning unique polySerializerIDs to
 	// polymorphic fixed-table fields as they are encountered during ParsePacket.
 	polyCount int
 }
@@ -106,10 +106,12 @@ func (sc *serverClasses) String() string {
 	return strings.Join(names, "\n")
 }
 
+// ServerClasses returns a ServerClasses view of all known classes.
 func (p *Parser) ServerClasses() st.ServerClasses {
 	return (*serverClasses)(p)
 }
 
+// NewParser creates a new CS2 send-tables parser.
 func NewParser(packetEntitiesPanicWarnFunc func(error)) *Parser {
 	return &Parser{
 		serializers:                 make(map[string]*serializer),
@@ -121,7 +123,7 @@ func NewParser(packetEntitiesPanicWarnFunc func(error)) *Parser {
 	}
 }
 
-// Internal callback for OnCSVCMsg_ServerInfo.
+// OnServerInfo is an internal callback for OnCSVCMsg_ServerInfo.
 func (p *Parser) OnServerInfo(m *msg.CSVCMsg_ServerInfo) error {
 	// This may be needed to parse PacketEntities.
 	p.classIdSize = uint32(math.Log(float64(m.GetMaxClasses()))/math.Log(2)) + 1
@@ -129,18 +131,19 @@ func (p *Parser) OnServerInfo(m *msg.CSVCMsg_ServerInfo) error {
 	return nil
 }
 
+// OnDemoClassInfo is an internal callback for CDemoClassInfo messages.
 func (p *Parser) OnDemoClassInfo(m *msg.CDemoClassInfo) error {
 	for _, c := range m.GetClasses() {
 		classId := c.GetClassId() //nolint:revive
 		networkName := c.GetNetworkName()
 
 		class := &class{
-			classId:    classId,
-			name:       networkName,
-			serializer: p.serializers[networkName],
-			polyCount:  p.polyCount,
-			fpNameCache:  &fpNameTreeCache{},
-			fpFlatCache:  make(map[uint64]string),
+			classId:     classId,
+			name:        networkName,
+			serializer:  p.serializers[networkName],
+			polyCount:   p.polyCount,
+			fpNameCache: &fpNameTreeCache{},
+			fpFlatCache: make(map[uint64]string),
 		}
 		p.classesById[class.classId] = class
 		p.classesByName[class.name] = class
@@ -160,6 +163,8 @@ func (p *Parser) SetInstanceBaseline(scID int, data []byte) {
 	p.classBaselines[int32(scID)] = data
 }
 
+// ParsePacket parses a FlattenedSerializer packet, building the serializer/field model.
+//
 //nolint:gocognit
 func (p *Parser) ParsePacket(b []byte) error {
 	r := newReader(b)
@@ -212,7 +217,7 @@ func (p *Parser) ParsePacket(b []byte) error {
 						if len(field.polyTypes) > 0 {
 							// Assign a unique per-entity slot BEFORE calling setModel,
 							// so the closure in setModel captures the correct ID.
-							field.polySerializerId = p.polyCount
+							field.polySerializerID = p.polyCount
 							p.polyCount++
 						}
 						field.setModel(fieldModelFixedTable)

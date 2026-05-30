@@ -1,3 +1,4 @@
+// Package sendtablescs2 implements the CS2 send-tables (FlattenedSerializer) parser.
 package sendtablescs2
 
 import (
@@ -87,8 +88,9 @@ func fpFlatKey(fp *fieldPath) (uint64, bool) {
 	return key, true
 }
 
+//nolint:nestif
 func (c *class) getNameForFieldPath(fp *fieldPath, ps []*serializer) string {
-	if ps == nil { //nolint:nestif
+	if ps == nil {
 		// No polymorphic fields: use the shared class-level caches.
 		if key, ok := fpFlatKey(fp); ok {
 			if name, hit := c.fpFlatCache[key]; hit {
