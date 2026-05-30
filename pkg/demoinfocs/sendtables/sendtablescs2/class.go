@@ -88,7 +88,7 @@ func fpFlatKey(fp *fieldPath) (uint64, bool) {
 }
 
 func (c *class) getNameForFieldPath(fp *fieldPath, ps []*serializer) string {
-	if ps == nil {
+	if ps == nil { //nolint:nestif
 		// No polymorphic fields: use the shared class-level caches.
 		if key, ok := fpFlatKey(fp); ok {
 			if name, hit := c.fpFlatCache[key]; hit {

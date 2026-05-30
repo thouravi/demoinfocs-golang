@@ -243,7 +243,7 @@ func (f *field) getFieldPathForName(fp *fieldPath, name string, ps []*serializer
 	return false
 }
 
-func (f *field) getFieldPaths(fp *fieldPath, state *fieldState, ps []*serializer) []*fieldPath {
+func (f *field) getFieldPaths(fp *fieldPath, state *fieldState, ps []*serializer) []*fieldPath { //nolint:gocognit
 	x := make([]*fieldPath, 0, 1)
 
 	switch f.model {
