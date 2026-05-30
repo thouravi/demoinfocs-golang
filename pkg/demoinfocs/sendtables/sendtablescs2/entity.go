@@ -444,7 +444,7 @@ func (p *Parser) FilterEntity(fb func(*Entity) bool) []*Entity {
 	return entities
 }
 
-func (e *Entity) readFields(r *reader, paths *[]*fieldPath) {
+func (e *Entity) readFields(r *reader, paths *[]*fieldPath) { //nolint:gocognit
 	n := readFieldPaths(r, paths)
 
 	for _, fp := range (*paths)[:n] {
