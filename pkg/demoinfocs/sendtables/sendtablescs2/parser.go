@@ -209,13 +209,13 @@ func (p *Parser) ParsePacket(b []byte) error {
 				// determine field model
 				if field.serializer != nil || len(field.polyTypes) > 0 { //nolint:gocritic
 					if field.fieldType.pointer || pointerTypes[field.fieldType.baseType] || len(field.polyTypes) > 0 {
-						field.setModel(fieldModelFixedTable)
 						if len(field.polyTypes) > 0 {
-							// Assign a unique per-entity slot for this polymorphic
-							// pointer's active serializer.
+							// Assign a unique per-entity slot BEFORE calling setModel,
+							// so the closure in setModel captures the correct ID.
 							field.polySerializerId = p.polyCount
 							p.polyCount++
 						}
+						field.setModel(fieldModelFixedTable)
 					} else {
 						field.setModel(fieldModelVariableTable)
 					}
