@@ -110,6 +110,8 @@ type Analysis struct {
 	Chats        []ChatInfo    `json:"chats"`
 	Shots        []ShotInfo    `json:"shots"` // world coords for client heatmap
 	Nades        []NadeInfo    `json:"nades"`
+	Infernos     []InfernoInfo `json:"infernos"`
+	BombEvents   []BombEvent   `json:"bombEvents"`
 	Voice        VoiceInfo     `json:"voice"`
 	MapMeta      *MapMeta      `json:"mapMeta,omitempty"`
 	Error        string        `json:"error,omitempty"`
@@ -138,6 +140,7 @@ type PlayerStat struct {
 	FourKs        int `json:"fourKs"`
 	FiveKs        int `json:"fiveKs"`
 	UtilityDamage int `json:"utilityDamage"`
+	FlashAssists  int `json:"flashAssists"`
 
 	// Viewmodel settings (CS2 only, supported via common.Player methods)
 	ViewmodelOffset r3.Vector `json:"viewmodelOffset"`
@@ -210,6 +213,18 @@ type NadeInfo struct {
 	ThrowerRoll  float32 `json:"throwerRoll"`
 }
 
+type InfernoInfo struct {
+	Hull []Pos `json:"hull"`
+}
+
+type BombEvent struct {
+	Tick     int    `json:"tick"`
+	Round    int    `json:"round"`
+	Position Pos    `json:"position"`
+	Player   string `json:"player"`
+	Type     string `json:"type"` // "plant" or "defuse"
+}
+
 // VoiceClipInfo - metadata only in main response
 type VoiceClipInfo struct {
 	Index      int `json:"index"`
@@ -261,6 +276,8 @@ type parseState struct {
 	chats        []ChatInfo
 	shots        []ShotInfo
 	nades        []NadeInfo
+	infernos     []*common.Inferno
+	bombEvents   []BombEvent
 	voicePackets map[uint64][]voicePacket // steam -> packets for grouping later
 
 	// for nade tracking
@@ -270,6 +287,9 @@ type parseState struct {
 	// for round scores (updated on end)
 	lastTScore  int
 	lastCTScore int
+
+	tScore int
+	ctScore int
 
 	// map meta
 	mapMeta *MapMeta
@@ -305,6 +325,10 @@ func newParseState(demoName string) *parseState {
 		voicePackets: make(map[uint64][]voicePacket),
 		currentRound:      0,
 		currentRoundKills: make(map[uint64]int),
+		infernos:          []*common.Inferno{},
+		bombEvents:        []BombEvent{},
+		tScore:            0,
+		ctScore:           0,
 	}
 }
 
@@ -453,10 +477,12 @@ func parseDemo(demoPath string) (*Analysis, error) {
 	// Round tracking
 	p.RegisterEventHandler(func(e events.RoundStart) {
 		st.currentRound++
-		// initial scores from game state
+		// initial scores from game state; also sync our tracked scores (used for accurate round scores in table)
 		gs := p.GameState()
-		st.lastTScore = gs.TeamTerrorists().Score()
-		st.lastCTScore = gs.TeamCounterTerrorists().Score()
+		st.tScore = gs.TeamTerrorists().Score()
+		st.ctScore = gs.TeamCounterTerrorists().Score()
+		st.lastTScore = st.tScore
+		st.lastCTScore = st.ctScore
 
 		st.currentRoundKills = make(map[uint64]int)
 
@@ -478,14 +504,21 @@ func parseDemo(demoPath string) (*Analysis, error) {
 		case common.TeamCounterTerrorists:
 			winner = "CT"
 		}
-		// score after is +1 for winner
-		tScore := gs.TeamTerrorists().Score()
-		ctScore := gs.TeamCounterTerrorists().Score()
-		if e.Winner == common.TeamTerrorists {
-			tScore++
-		} else if e.Winner == common.TeamCounterTerrorists {
-			ctScore++
+		// Use tracked scores from ScoreUpdated (more reliable for CS2); fallback to gs +1 workaround if zero
+		tScore := st.tScore
+		ctScore := st.ctScore
+		if tScore == 0 && ctScore == 0 {
+			tScore = gs.TeamTerrorists().Score()
+			ctScore = gs.TeamCounterTerrorists().Score()
+			if e.Winner == common.TeamTerrorists {
+				tScore++
+			} else if e.Winner == common.TeamCounterTerrorists {
+				ctScore++
+			}
 		}
+		// keep tracked in sync with what we recorded for this round end
+		st.tScore = tScore
+		st.ctScore = ctScore
 		st.rounds = append(st.rounds, RoundInfo{
 			Number:  st.currentRound,
 			Winner:  winner,
@@ -533,6 +566,9 @@ func parseDemo(demoPath string) (*Analysis, error) {
 				ps.Kills++
 				if e.IsHeadshot {
 					ps.Headshots++
+				}
+				if e.AssistedFlash {
+					ps.FlashAssists++
 				}
 			}
 			// track kills this round for 3K/4K/5K (ace) stats
@@ -711,6 +747,52 @@ func parseDemo(demoPath string) (*Analysis, error) {
 
 	// Also capture inferno for molly coverage? For basic, nades + trajectories sufficient. Can extend later.
 
+	// Inferno for advanced molly areas viz (convex hulls)
+	p.RegisterEventHandler(func(e events.InfernoExpired) {
+		if e.Inferno != nil {
+			st.infernos = append(st.infernos, e.Inferno)
+		}
+	})
+
+	// Bomb events for plant/defuse positions and stats
+	p.RegisterEventHandler(func(e events.BombPlanted) {
+		if e.Player != nil {
+			bombPos := p.GameState().Bomb().Position()
+			st.bombEvents = append(st.bombEvents, BombEvent{
+				Tick:     p.GameState().IngameTick(),
+				Round:    st.currentRound,
+				Position: Pos{X: bombPos.X, Y: bombPos.Y, Z: bombPos.Z},
+				Player:   e.Player.Name,
+				Type:     "plant",
+			})
+		}
+	})
+	p.RegisterEventHandler(func(e events.BombDefused) {
+		if e.Player != nil {
+			bombPos := p.GameState().Bomb().Position()
+			st.bombEvents = append(st.bombEvents, BombEvent{
+				Tick:     p.GameState().IngameTick(),
+				Round:    st.currentRound,
+				Position: Pos{X: bombPos.X, Y: bombPos.Y, Z: bombPos.Z},
+				Player:   e.Player.Name,
+				Type:     "defuse",
+			})
+		}
+	})
+
+	// Track scores via ScoreUpdated for accurate round-end scores (avoids +1 workaround issues in some CS2 demos)
+	p.RegisterEventHandler(func(e events.ScoreUpdated) {
+		if e.TeamState == nil {
+			return
+		}
+		switch e.TeamState.Team() {
+		case common.TeamTerrorists:
+			st.tScore = e.NewScore
+		case common.TeamCounterTerrorists:
+			st.ctScore = e.NewScore
+		}
+	})
+
 	// Voice data (CSVCMsg_VoiceData from server to clients, contains the encoded voice)
 	p.RegisterNetMessageHandler(func(v *msg.CSVCMsg_VoiceData) {
 		if v.GetAudio() == nil {
@@ -809,6 +891,8 @@ func parseDemo(demoPath string) (*Analysis, error) {
 		Chats:         st.chats,
 		Shots:         st.shots,
 		Nades:         st.nades,
+		Infernos:      []InfernoInfo{},
+		BombEvents:    []BombEvent{},
 		Voice:         voiceInfo,
 		MapMeta:       st.mapMeta,
 	}
@@ -821,6 +905,17 @@ func parseDemo(demoPath string) (*Analysis, error) {
 			analysis.MapMeta = &MapMeta{PosX: mm.PosX, PosY: mm.PosY, Scale: mm.Scale}
 		}()
 	}
+
+	// infernos for advanced molly area viz on grenade map (convex hulls from library)
+	for _, inf := range st.infernos {
+		hull2d := inf.Fires().ConvexHull2D()
+		var hull []Pos
+		for _, p := range hull2d {
+			hull = append(hull, Pos{X: p.X, Y: p.Y})
+		}
+		analysis.Infernos = append(analysis.Infernos, InfernoInfo{Hull: hull})
+	}
+	analysis.BombEvents = st.bombEvents
 
 	return analysis, nil
 }

@@ -207,6 +207,7 @@
                 <th data-sort="fourKs" class="text-right sortable" title="4-kill rounds (4K)">4K</th>
                 <th data-sort="fiveKs" class="text-right sortable" title="5-kill rounds (Ace)">5K</th>
                 <th data-sort="utilityDamage" class="text-right sortable" title="Utility damage (HE + molly/incendiary)">Util</th>
+                <th data-sort="flashAssists" class="text-right sortable" title="Kills assisted by flash (from Kill.AssistedFlash)">FA</th>
               </tr>
             </thead>
             <tbody id="players-tbody" class="divide-y divide-slate-800"></tbody>
@@ -529,6 +530,7 @@
         <div><span class="text-slate-400">Rounds played:</span> ${(a.rounds||[]).length}</div>
         <div><span class="text-slate-400">Total shots recorded:</span> ${(a.shots||[]).length}</div>
         <div><span class="text-slate-400">Grenades thrown:</span> ${(a.nades||[]).length}</div>
+        <div><span class="text-slate-400">Advanced viz:</span> ${(a.infernos||[]).length} mollies, ${(a.bombEvents||[]).length} bomb events</div>
         <div><span class="text-slate-400">Chat messages:</span> ${(a.chats||[]).length}</div>
         <div><span class="text-slate-400">Viewmodel settings:</span> ${(a.players||[]).filter(p => p.viewmodelFOV || p.crosshairCode || (p.viewmodelOffset && (p.viewmodelOffset.X||p.viewmodelOffset.Y||p.viewmodelOffset.Z))).length } / ${(a.players||[]).length} players (CS2 feature)</div>
       `;
@@ -591,6 +593,7 @@
           <td class="text-right">${p.fourKs||0}</td>
           <td class="text-right">${p.fiveKs||0}</td>
           <td class="text-right">${p.utilityDamage||0}</td>
+          <td class="text-right">${p.flashAssists||0}</td>
         `;
         tb.appendChild(tr);
       });
@@ -830,6 +833,17 @@
         lab.innerHTML = `<input type="checkbox" id="${id}" checked onchange="filterAndRenderNades()" class="accent-emerald-500"> <span>${t}</span>`;
         cont.appendChild(lab);
       });
+
+      // advanced layers as additional filterable options (molly areas, bomb plants/defuses)
+      // these don't affect thrown nade table but control extra drawing on map
+      ["Molly", "Bomb"].forEach(t => {
+        const id = 'nt-' + t;
+        const lab = document.createElement('label');
+        lab.className = 'filter-chip cursor-pointer flex items-center gap-x-1 px-2';
+        const color = t === "Molly" ? "#f59e0b" : "#ef4444";
+        lab.innerHTML = `<input type="checkbox" id="${id}" checked onchange="filterAndRenderNades()" class="accent-emerald-500"> <span style="color:${color}">${t}</span>`;
+        cont.appendChild(lab);
+      });
     }
 
     function getSelectedNadeTypes() {
@@ -1008,6 +1022,51 @@
         ctx.stroke();
       });
       ctx.globalAlpha = 1.0;
+      ctx.lineWidth = 1.6;
+
+      // advanced layers from library (Inferno for molly areas using ConvexHull2D, Bomb events)
+      // only drawn if their "type" is selected in filters; respects "no selection = empty map" for thrown
+      if (selectedTypes.has("Molly") && currentAnalysis.infernos && currentAnalysis.infernos.length > 0) {
+        ctx.fillStyle = "rgba(255, 140, 0, 0.35)";
+        ctx.strokeStyle = "#ff8c00";
+        ctx.lineWidth = 1.5;
+        for (let inf of currentAnalysis.infernos) {
+          if (!inf.hull || inf.hull.length < 3) continue;
+          ctx.beginPath();
+          let first = inf.hull[0];
+          let rx = (first.x - meta.posX) / meta.scale;
+          let ry = (meta.posY - first.y) / meta.scale;
+          let dx = rx * scaleX;
+          let dy = ry * scaleY;
+          ctx.moveTo(dx, dy);
+          for (let i = 1; i < inf.hull.length; i++) {
+            let p = inf.hull[i];
+            rx = (p.x - meta.posX) / meta.scale;
+            ry = (meta.posY - p.y) / meta.scale;
+            dx = rx * scaleX;
+            dy = ry * scaleY;
+            ctx.lineTo(dx, dy);
+          }
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
+      if (selectedTypes.has("Bomb") && currentAnalysis.bombEvents && currentAnalysis.bombEvents.length > 0) {
+        for (let b of currentAnalysis.bombEvents) {
+          let rx = (b.position.x - meta.posX) / meta.scale;
+          let ry = (meta.posY - b.position.y) / meta.scale;
+          let dx = rx * scaleX;
+          let dy = ry * scaleY;
+          ctx.fillStyle = b.type === "plant" ? "#ef4444" : "#3b82f6";
+          ctx.beginPath();
+          ctx.arc(dx, dy, 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#111827";
+          ctx.font = "bold 7px monospace";
+          ctx.fillText(b.type === "plant" ? "P" : "D", dx - 2, dy + 2);
+        }
+      }
       ctx.lineWidth = 1.6;
 
       // start markers (yellow) for selected
