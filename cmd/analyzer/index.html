@@ -54,6 +54,10 @@
     .modern-btn:active { transform: translateY(1px); }
     .stat-card { transition: transform .1s ease; }
     .stat-card:hover { transform: translateY(-1px); }
+    .sortable { cursor: pointer; user-select: none; }
+    .sortable:hover { color: #cbd5e1; }
+    .sortable.asc::after { content: ' ▲'; font-size: 0.65em; vertical-align: middle; opacity: 0.7; }
+    .sortable.desc::after { content: ' ▼'; font-size: 0.65em; vertical-align: middle; opacity: 0.7; }
   </style>
 </head>
 <body class="bg-slate-950 text-slate-200">
@@ -189,8 +193,20 @@
           <table class="w-full data-table">
             <thead class="bg-slate-900 text-left text-xs uppercase text-slate-400">
               <tr>
-                <th>Player</th><th>Team</th><th class="text-right">K</th><th class="text-right">D</th><th class="text-right">A</th>
-                <th class="text-right">Damage</th><th class="text-right">ADR</th><th class="text-right">HS</th>
+                <th data-sort="name" class="sortable">Player</th>
+                <th data-sort="team" class="sortable">Team</th>
+                <th data-sort="kills" class="text-right sortable">K</th>
+                <th data-sort="deaths" class="text-right sortable">D</th>
+                <th data-sort="assists" class="text-right sortable">A</th>
+                <th data-sort="damage" class="text-right sortable">Damage</th>
+                <th data-sort="adr" class="text-right sortable">ADR</th>
+                <th data-sort="headshots" class="text-right sortable">HS</th>
+                <th data-sort="hsPercent" class="text-right sortable" title="Headshot %">HS%</th>
+                <th data-sort="accuracy" class="text-right sortable" title="Weapon accuracy (hits/shots for guns)">Acc%</th>
+                <th data-sort="threeKs" class="text-right sortable" title="3-kill rounds (3K)">3K</th>
+                <th data-sort="fourKs" class="text-right sortable" title="4-kill rounds (4K)">4K</th>
+                <th data-sort="fiveKs" class="text-right sortable" title="5-kill rounds (Ace)">5K</th>
+                <th data-sort="utilityDamage" class="text-right sortable" title="Utility damage (HE + molly/incendiary)">Util</th>
               </tr>
             </thead>
             <tbody id="players-tbody" class="divide-y divide-slate-800"></tbody>
@@ -295,7 +311,7 @@
           <div class="lg:col-span-2 cs-card rounded-3xl p-1 max-h-[460px] overflow-auto text-xs border border-slate-800">
             <table class="w-full">
               <thead class="text-[10px] text-slate-400 sticky top-0 bg-slate-900/90 backdrop-blur">
-                <tr><th class="text-left pl-2">R</th><th>Thrower</th><th>Type</th><th class="pr-2 text-right">Pts</th></tr>
+                <tr><th class="text-left pl-2">R</th><th>Thrower</th><th>Type</th><th class="pr-2 text-right">Pts</th><th class="w-6 text-center" title="Copy setpos command to teleport to the exact throw position in-game">📍</th></tr>
               </thead>
               <tbody id="nades-tbody" class="divide-y divide-slate-800"></tbody>
             </table>
@@ -320,6 +336,7 @@
     let currentAnalysis = null;
     let currentRadarImg = null;
     let selectedNades = new Set();
+    let allNades = [];
 
     const TAILWIND = document.createElement('style'); // already via cdn script
     function initTailwind() {
@@ -468,6 +485,7 @@
 
       // players
       renderPlayers(a.players || []);
+      setupPlayersTableSorting();
 
       // viewmodel settings (new feature)
       renderViewmodels(a.players || []);
@@ -491,8 +509,9 @@
       }
 
       // nades table + type filters
-      renderNadesTable(a.nades || []);
-      setupNadeTypeFilters(a.nades || []);
+      allNades = a.nades || [];
+      setupNadeTypeFilters(allNades);
+      filterAndRenderNades();
 
       // voice
       renderVoice(a.voice || {players:[]}, a.demoName);
@@ -526,10 +545,36 @@
       if (!sorted.length) top.textContent = 'No player data';
     }
 
+    let playersData = [];
+    let playersSortState = { key: 'kills', dir: 'desc' };
+
     function renderPlayers(players) {
+      playersData = players ? [...players] : [];
+      sortAndRenderPlayers();
+    }
+
+    function sortAndRenderPlayers() {
       const tb = document.getElementById('players-tbody');
+      if (!tb) return;
+      if (!playersData.length) {
+        tb.innerHTML = '';
+        return;
+      }
+      const {key, dir} = playersSortState;
+      const sorted = [...playersData].sort((a, b) => {
+        let va = a[key], vb = b[key];
+        if (va == null) va = 0;
+        if (vb == null) vb = 0;
+        let cmp = 0;
+        if (typeof va === 'number' && typeof vb === 'number') {
+          cmp = va - vb;
+        } else {
+          cmp = String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' });
+        }
+        return dir === 'asc' ? cmp : -cmp;
+      });
       tb.innerHTML = '';
-      players.forEach(p => {
+      sorted.forEach(p => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td class="font-medium">${escapeHtml(p.name)}</td>
@@ -540,8 +585,47 @@
           <td class="text-right">${p.damage}</td>
           <td class="text-right text-emerald-400">${(p.adr||0).toFixed(1)}</td>
           <td class="text-right">${p.headshots}</td>
+          <td class="text-right text-amber-400">${(p.hsPercent||0).toFixed(0)}%</td>
+          <td class="text-right">${(p.accuracy||0).toFixed(0)}%</td>
+          <td class="text-right">${p.threeKs||0}</td>
+          <td class="text-right">${p.fourKs||0}</td>
+          <td class="text-right">${p.fiveKs||0}</td>
+          <td class="text-right">${p.utilityDamage||0}</td>
         `;
         tb.appendChild(tr);
+      });
+      updatePlayersSortIndicators();
+    }
+
+    function updatePlayersSortIndicators() {
+      const ths = document.querySelectorAll('#panel-players th[data-sort]');
+      ths.forEach(th => {
+        th.classList.remove('asc', 'desc');
+        if (th.dataset.sort === playersSortState.key) {
+          th.classList.add(playersSortState.dir);
+        }
+      });
+    }
+
+    function setupPlayersTableSorting() {
+      const table = document.querySelector('#panel-players table');
+      if (!table) return;
+      const thead = table.querySelector('thead');
+      if (!thead || thead._sortSetup) return;
+      thead._sortSetup = true;
+      const ths = thead.querySelectorAll('th[data-sort]');
+      ths.forEach(th => {
+        th.addEventListener('click', () => {
+          const key = th.dataset.sort;
+          if (!key) return;
+          if (playersSortState.key === key) {
+            playersSortState.dir = playersSortState.dir === 'asc' ? 'desc' : 'asc';
+          } else {
+            playersSortState.key = key;
+            playersSortState.dir = (key === 'name' || key === 'team') ? 'asc' : 'desc';
+          }
+          sortAndRenderPlayers();
+        });
       });
     }
 
@@ -743,7 +827,7 @@
         const id = 'nt-' + t.replace(/\s+/g,'');
         const lab = document.createElement('label');
         lab.className = 'filter-chip cursor-pointer flex items-center gap-x-1 px-2';
-        lab.innerHTML = `<input type="checkbox" id="${id}" checked onchange="drawNades()" class="accent-emerald-500"> <span>${t}</span>`;
+        lab.innerHTML = `<input type="checkbox" id="${id}" checked onchange="filterAndRenderNades()" class="accent-emerald-500"> <span>${t}</span>`;
         cont.appendChild(lab);
       });
     }
@@ -753,6 +837,18 @@
       const sel = new Set();
       boxes.forEach(b => { if (b.checked) sel.add(b.id.replace('nt-','')); });
       return sel;
+    }
+
+    function filterAndRenderNades() {
+      if (!allNades.length) return;
+      const selectedTypes = getSelectedNadeTypes();
+      let filtered = [];
+      if (selectedTypes.size > 0) {
+        filtered = allNades.filter(n => selectedTypes.has(n.weapon));
+      }
+      // else empty when none selected
+      renderNadesTable(filtered);
+      drawNades();
     }
 
     function renderNadesTable(nades) {
@@ -767,9 +863,29 @@
           <td class="font-medium">${escapeHtml(n.thrower)}</td>
           <td><span style="color:${getNadeColor(n.weapon)}">${n.weapon}</span></td>
           <td class="text-slate-400">${(n.trajectory||[]).length}</td>
+          <td>
+            <button 
+              data-nade-pos="${n.id}"
+              class="text-[10px] px-1 py-px bg-slate-800 hover:bg-emerald-800 border border-slate-600 hover:border-emerald-600 rounded text-emerald-300 transition-colors"
+              title="Copy setpos command to teleport to the exact throw position (paste in console)"
+            >📍</button>
+          </td>
         `;
         tr.dataset.nadeId = n.id;
+        if (selectedNades.has(n.id)) {
+          tr.classList.add('!bg-emerald-900/30');
+        }
         tb.appendChild(tr);
+      });
+
+      // attach setpos copy listeners (use event listeners instead of inline onclick for scope reliability)
+      tb.querySelectorAll('button[data-nade-pos]').forEach(btn => {
+        btn.onclick = (ev) => {
+          ev.stopImmediatePropagation();
+          const idStr = btn.getAttribute('data-nade-pos');
+          const id = idStr ? parseInt(idStr, 10) : 0;
+          copySetposForNade(id);
+        };
       });
     }
 
@@ -798,6 +914,40 @@
       drawNades();
     }
 
+    function copySetposForNade(nadeId) {
+      const source = allNades && allNades.length ? allNades : (currentAnalysis && currentAnalysis.nades) || [];
+      const n = source.find(nn => nn.id === nadeId);
+      if (!n) {
+        alert('Nade data not found');
+        return;
+      }
+      // Prefer player's throw position (not the grenade projectile start)
+      let x = n.throwerPosX !== undefined ? n.throwerPosX : (n.startX || 0);
+      let y = n.throwerPosY !== undefined ? n.throwerPosY : (n.startY || 0);
+      let z = n.throwerPosZ !== undefined ? n.throwerPosZ : 0;
+      let pitch = n.throwerPitch !== undefined ? n.throwerPitch : 0;
+      let yaw = n.throwerYaw !== undefined ? n.throwerYaw : 0;
+      // If no thrower pos stored (old data), fallback to first trajectory point (grenade pos)
+      if ((n.throwerPosX === undefined || n.throwerPosX === 0) && n.trajectory && n.trajectory.length > 0) {
+        const p0 = n.trajectory[0];
+        x = p0.x || p0.X || x;
+        y = p0.y || p0.Y || y;
+        z = p0.z || p0.Z || z;
+      }
+      const cmd = `setpos ${x.toFixed(6)} ${y.toFixed(6)} ${z.toFixed(6)};setang ${pitch.toFixed(6)} ${yaw.toFixed(6)} 0.000000`;
+      navigator.clipboard.writeText(cmd).then(() => {
+        const btns = document.querySelectorAll(`[data-nade-pos="${nadeId}"]`);
+        btns.forEach(btn => {
+          const orig = btn.innerHTML;
+          btn.innerHTML = '✓';
+          setTimeout(() => { btn.innerHTML = orig; }, 900);
+        });
+      }).catch(() => {
+        // fallback
+        prompt('Copy this setpos;setang command and paste in console:', cmd);
+      });
+    }
+
     function drawNades() {
       const canvas = document.getElementById('nade-canvas');
       const ctx = canvas.getContext('2d');
@@ -812,13 +962,12 @@
         ctx.fillStyle = '#0f172a'; ctx.fillRect(0,0,w,h);
       }
 
-      const allNades = currentAnalysis.nades || [];
+      const allNades = window.allNades || (currentAnalysis ? currentAnalysis.nades || [] : []);
       const selectedTypes = getSelectedNadeTypes();
       const meta = currentAnalysis.mapMeta;
 
       const toDraw = allNades.filter(n => {
-        if (selectedTypes.size > 0 && !selectedTypes.has(n.weapon)) return false;
-        return true;
+        return selectedTypes.size > 0 && selectedTypes.has(n.weapon);
       });
 
       ctx.lineWidth = 1.6;

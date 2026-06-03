@@ -127,6 +127,18 @@ type PlayerStat struct {
 	Headshots   int     `json:"headshots"`
 	ADR         float64 `json:"adr,omitempty"`
 
+	// new advanced metrics (computed from WeaponFire + PlayerHurt + Kill events + round timing)
+	Shots           int     `json:"shots"`
+	Hits            int     `json:"hits"`
+	HSPercent       float64 `json:"hsPercent"`
+	Accuracy        float64 `json:"accuracy"`
+
+	// multi-kill stats (3K/4K/5K aces) and utility damage, tracked via per-round kill counts + PlayerHurt weapon class
+	ThreeKs       int `json:"threeKs"`
+	FourKs        int `json:"fourKs"`
+	FiveKs        int `json:"fiveKs"`
+	UtilityDamage int `json:"utilityDamage"`
+
 	// Viewmodel settings (CS2 only, supported via common.Player methods)
 	ViewmodelOffset r3.Vector `json:"viewmodelOffset"`
 	ViewmodelFOV    float32   `json:"viewmodelFOV"`
@@ -190,6 +202,12 @@ type NadeInfo struct {
 	StartX     float64 `json:"startX"`
 	StartY     float64 `json:"startY"`
 	Trajectory []Pos  `json:"trajectory"`
+	ThrowerPosX  float64 `json:"throwerPosX"`
+	ThrowerPosY  float64 `json:"throwerPosY"`
+	ThrowerPosZ  float64 `json:"throwerPosZ"`
+	ThrowerPitch float32 `json:"throwerPitch"`
+	ThrowerYaw   float32 `json:"throwerYaw"`
+	ThrowerRoll  float32 `json:"throwerRoll"`
 }
 
 // VoiceClipInfo - metadata only in main response
@@ -232,6 +250,10 @@ type parseState struct {
 	// current
 	currentRound int
 
+	// for advanced per-player metrics (accuracy, time-to-damage etc)
+	// for 3K/4K/5K tracking
+	currentRoundKills map[uint64]int // sid -> kill count this round
+
 	// collected
 	players      map[uint64]*PlayerStat // by steam
 	rounds       []RoundInfo
@@ -270,6 +292,9 @@ type nadeBuilder struct {
 	startX    float64
 	startY    float64
 	trajectory []r3.Vector
+	throwerPos r3.Vector
+	throwerPitch float32
+	throwerYaw   float32
 }
 
 func newParseState(demoName string) *parseState {
@@ -278,7 +303,8 @@ func newParseState(demoName string) *parseState {
 		players:      make(map[uint64]*PlayerStat),
 		activeNades:  make(map[int64]*nadeBuilder),
 		voicePackets: make(map[uint64][]voicePacket),
-		currentRound: 0,
+		currentRound:      0,
+		currentRoundKills: make(map[uint64]int),
 	}
 }
 
@@ -377,6 +403,25 @@ func roundEndReasonToStr(r events.RoundEndReason) string {
 	}
 }
 
+// isGunWeapon returns true for weapons that contribute to shooting accuracy (pistols, smgs, heavies, rifles).
+// Uses the library's EquipmentClass.
+func isGunWeapon(t common.EquipmentType) bool {
+	if t == common.EqUnknown {
+		return false
+	}
+	cls := t.Class()
+	return cls == common.EqClassPistols || cls == common.EqClassSMG || cls == common.EqClassHeavy || cls == common.EqClassRifle
+}
+
+// isUtilityWeapon returns true for grenades that deal utility (HE, molotov/incendiary) damage.
+func isUtilityWeapon(t common.EquipmentType) bool {
+	switch t {
+	case common.EqHE, common.EqMolotov, common.EqIncendiary:
+		return true
+	}
+	return false
+}
+
 // parseDemo does the heavy lifting using the library. Returns Analysis.
 func parseDemo(demoPath string) (*Analysis, error) {
 	f, err := os.Open(demoPath)
@@ -413,6 +458,8 @@ func parseDemo(demoPath string) (*Analysis, error) {
 		st.lastTScore = gs.TeamTerrorists().Score()
 		st.lastCTScore = gs.TeamCounterTerrorists().Score()
 
+		st.currentRoundKills = make(map[uint64]int)
+
 		// Capture viewmodel settings for playing players (CS2 only feature from the library)
 		// This follows the pattern from examples/viewmodel-settings
 		for _, pl := range gs.Participants().Playing() {
@@ -446,6 +493,28 @@ func parseDemo(demoPath string) (*Analysis, error) {
 			TScore:  tScore,
 			CTScore: ctScore,
 		})
+
+		// tally 3K/4K/5K (aces) based on kills in this round
+		for sid, kcount := range st.currentRoundKills {
+			if kcount >= 3 {
+				if ps, ok := st.players[sid]; ok {
+					switch kcount {
+					case 3:
+						ps.ThreeKs++
+					case 4:
+						ps.FourKs++
+					case 5:
+						ps.FiveKs++
+					default:
+						if kcount > 5 {
+							ps.FiveKs++
+						}
+					}
+				}
+			}
+		}
+		st.currentRoundKills = make(map[uint64]int)
+
 		st.lastTScore = tScore
 		st.lastCTScore = ctScore
 	})
@@ -466,6 +535,12 @@ func parseDemo(demoPath string) (*Analysis, error) {
 					ps.Headshots++
 				}
 			}
+			// track kills this round for 3K/4K/5K (ace) stats
+			sid := e.Killer.SteamID64
+			if sid == 0 {
+				sid = uint64(e.Killer.UserID) | (1 << 60)
+			}
+			st.currentRoundKills[sid]++
 		}
 		victim := "?"
 		if e.Victim != nil {
@@ -514,7 +589,13 @@ func parseDemo(demoPath string) (*Analysis, error) {
 			Team:   teamToStr(e.Shooter.Team),
 			Weapon: e.Weapon.String(),
 		})
-		// also damage? later
+
+		// count shots for per-player accuracy stats (only gun weapons)
+		if e.Weapon != nil && isGunWeapon(e.Weapon.Type) {
+			if ps := st.ensurePlayer(e.Shooter); ps != nil {
+				ps.Shots++
+			}
+		}
 	})
 
 	// PlayerHurt for damage stats (ADR)
@@ -524,6 +605,14 @@ func parseDemo(demoPath string) (*Analysis, error) {
 		}
 		if ps := st.ensurePlayer(e.Attacker); ps != nil {
 			ps.Damage += e.HealthDamage
+			// count hit for accuracy (only for gun weapons)
+			if e.Weapon != nil && isGunWeapon(e.Weapon.Type) {
+				ps.Hits++
+			}
+			// utility damage (HE, molly/incendiary) - separate from total Damage/ADR
+			if e.Weapon != nil && isUtilityWeapon(e.Weapon.Type) {
+				ps.UtilityDamage += e.HealthDamage
+			}
 		}
 	})
 
@@ -554,16 +643,29 @@ func parseDemo(demoPath string) (*Analysis, error) {
 			st.nadeIDSeq++
 			id = st.nadeIDSeq
 		}
+		thrower := e.Projectile.Thrower
+		pos := thrower.Position()
+		if eyePos, ok := thrower.PositionEyes(); ok {
+			pos = eyePos
+		}
+		pitch := thrower.ViewDirectionY()
+		if pitch > 180 {
+			pitch -= 360
+		}
+		yaw := thrower.ViewDirectionX()
 		nb := &nadeBuilder{
 			id:        id,
 			throwTick: p.GameState().IngameTick(),
 			round:     st.currentRound,
-			thrower:   e.Projectile.Thrower.Name,
-			team:      teamToStr(e.Projectile.Thrower.Team),
+			thrower:   thrower.Name,
+			team:      teamToStr(thrower.Team),
 			weapon:    weaponToStr(e.Projectile.WeaponInstance.Type),
 			startX:    e.Projectile.Position().X,
 			startY:    e.Projectile.Position().Y,
 			trajectory: []r3.Vector{e.Projectile.Position()},
+			throwerPos: pos,
+			throwerPitch: pitch,
+			throwerYaw:   yaw,
 		}
 		st.activeNades[id] = nb
 	})
@@ -597,6 +699,12 @@ func parseDemo(demoPath string) (*Analysis, error) {
 			StartX:     nb.startX,
 			StartY:     nb.startY,
 			Trajectory: traj,
+			ThrowerPosX: nb.throwerPos.X,
+			ThrowerPosY: nb.throwerPos.Y,
+			ThrowerPosZ: nb.throwerPos.Z,
+			ThrowerPitch: nb.throwerPitch,
+			ThrowerYaw:   nb.throwerYaw,
+			ThrowerRoll:  0,
 		})
 		delete(st.activeNades, id)
 	})
@@ -658,6 +766,12 @@ func parseDemo(demoPath string) (*Analysis, error) {
 	for _, ps := range st.players {
 		if numRounds > 0 {
 			ps.ADR = float64(ps.Damage) / float64(numRounds)
+		}
+		if ps.Kills > 0 {
+			ps.HSPercent = float64(ps.Headshots) / float64(ps.Kills) * 100.0
+		}
+		if ps.Shots > 0 {
+			ps.Accuracy = float64(ps.Hits) / float64(ps.Shots) * 100.0
 		}
 		playerList = append(playerList, *ps)
 	}
