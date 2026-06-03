@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>demoinfocs-golang • Demo Analyzer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap');
+    :root { --accent: #22c55e; }
+    body { font-family: 'Inter', system_ui, sans-serif; }
+    .font-display { font-family: 'Space Grotesk', 'Inter', system_ui, sans-serif; }
+    .cs-card { background: #0f172a; border: 1px solid #1e2937; }
+    .tab { padding: 0.5rem 1rem; font-weight: 500; border-bottom: 2px solid transparent; cursor: pointer; }
+    .tab.active { border-bottom-color: #22c55e; color: #22c55e; }
+    .section-title { font-size: 0.75rem; letter-spacing: 0.05em; text-transform: uppercase; color: #64748b; }
+    table { border-collapse: separate; border-spacing: 0; }
+    th, td { padding: 0.5rem 0.75rem; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .data-table { font-size: 0.875rem; }
+    .data-table tr:hover { background: #1e2937; }
+    .nade-line { stroke-width: 1.5; stroke-opacity: 0.85; }
+    canvas { image-rendering: crisp-edges; }
+    .log-line { font-size: 0.8rem; line-height: 1.25rem; }
+    .stat { font-feature-settings: "tnum"; }
+    .filter-chip { font-size: 0.75rem; padding: 1px 8px; border-radius: 9999px; background: #1e2937; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-200">
+  <div class="max-w-[1280px] mx-auto p-4">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <div class="flex items-center gap-x-3">
+          <div class="w-9 h-9 bg-emerald-500 rounded flex items-center justify-center text-slate-950 font-bold text-xl">CS</div>
+          <div>
+            <div class="font-display text-3xl font-semibold tracking-tighter">demoinfocs <span class="text-emerald-400">analyzer</span></div>
+            <div class="text-[10px] text-slate-500 -mt-1">powered by demoinfocs-golang v5</div>
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center gap-x-2 text-sm">
+        <div class="px-3 py-1.5 bg-slate-900 rounded border border-slate-800 text-slate-400">demos/ folder</div>
+        <button onclick="refreshDemos()" 
+                class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded text-sm flex items-center gap-x-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.058 11H1M12 3v2m0 16v2m9-9H15m-6 0a8 8 0 01-.938-1.5" />
+          </svg>
+          <span>Refresh</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Demo selector -->
+    <div class="cs-card rounded-2xl p-4 mb-5">
+      <div class="flex flex-wrap gap-3 items-end">
+        <div class="flex-1 min-w-[260px]">
+          <div class="section-title mb-1.5">Select Demo</div>
+          <select id="demo-select" class="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500">
+            <option value="">— loading demos —</option>
+          </select>
+        </div>
+        <button onclick="analyzeSelected()" 
+                class="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 transition-colors text-slate-950 font-semibold rounded-xl flex items-center gap-x-2 text-sm">
+          <span>ANALYZE</span>
+        </button>
+        <button onclick="loadLastAnalysis()" 
+                class="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-sm">Load last</button>
+        <div id="parse-status" class="text-xs px-3 py-1 text-emerald-400"></div>
+      </div>
+      <div class="mt-2 text-[11px] text-slate-500">Place .dem files in the <span class="font-mono">demos/</span> folder next to the analyzer. Supports CS2 and CS:GO demos.</div>
+    </div>
+
+    <!-- Loaded info bar -->
+    <div id="loaded-bar" class="hidden mb-4 items-center gap-x-4 bg-slate-900 border border-slate-800 px-4 py-2 rounded-2xl text-sm">
+      <div class="flex-1">
+        <span id="loaded-demo" class="font-semibold"></span>
+        <span id="loaded-meta" class="text-slate-400 ml-2"></span>
+      </div>
+      <div class="flex gap-x-2 text-xs">
+        <div class="filter-chip px-2"> <span id="stat-kills">0</span> kills</div>
+        <div class="filter-chip px-2"> <span id="stat-chats">0</span> chats</div>
+        <div class="filter-chip px-2"> <span id="stat-nades">0</span> nades</div>
+        <div class="filter-chip px-2"> <span id="stat-shots">0</span> shots</div>
+      </div>
+      <button onclick="exportFull()" class="text-emerald-400 hover:text-emerald-300 text-xs px-2 py-0.5 border border-emerald-900 rounded">Export JSON</button>
+    </div>
+
+    <!-- Main content -->
+    <div id="main-content" class="hidden">
+      <!-- Quick stats -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        <div class="cs-card rounded-2xl p-4">
+          <div class="section-title">Map / Duration</div>
+          <div class="mt-1 text-2xl font-semibold" id="q-map">de_dust2</div>
+          <div class="text-emerald-400 text-sm" id="q-duration">—</div>
+        </div>
+        <div class="cs-card rounded-2xl p-4">
+          <div class="section-title">Players</div>
+          <div class="mt-1 flex items-baseline gap-x-2">
+            <div class="text-2xl font-semibold" id="q-players">10</div>
+            <div class="text-xs text-slate-400">in match</div>
+          </div>
+          <div class="text-xs text-slate-400" id="q-teams">—</div>
+        </div>
+        <div class="cs-card rounded-2xl p-4">
+          <div class="section-title">Rounds</div>
+          <div class="mt-1 text-2xl font-semibold" id="q-rounds">—</div>
+          <div class="mt-0.5 text-xs">Last score <span id="q-score" class="font-mono"></span></div>
+        </div>
+        <div class="cs-card rounded-2xl p-4">
+          <div class="section-title">Tick rate / Frames</div>
+          <div class="mt-1">
+            <span class="text-xl font-semibold" id="q-tickrate">64</span>
+            <span class="text-xs text-slate-400">tick</span>
+          </div>
+          <div id="q-frames" class="text-xs text-slate-400"></div>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="border-b border-slate-800 mb-3 flex flex-wrap gap-x-1 text-sm" id="tabs">
+        <div onclick="switchTab('overview')" class="tab active" data-tab="overview">Overview</div>
+        <div onclick="switchTab('players')" class="tab" data-tab="players">Players &amp; Stats</div>
+        <div onclick="switchTab('viewmodels')" class="tab" data-tab="viewmodels">Viewmodel Settings</div>
+        <div onclick="switchTab('rounds')" class="tab" data-tab="rounds">Rounds</div>
+        <div onclick="switchTab('chat')" class="tab" data-tab="chat">Chat</div>
+        <div onclick="switchTab('kills')" class="tab" data-tab="kills">Kills</div>
+        <div onclick="switchTab('heatmaps')" class="tab" data-tab="heatmaps">Heatmaps</div>
+        <div onclick="switchTab('nades')" class="tab" data-tab="nades">Grenades / Trajectories</div>
+        <div onclick="switchTab('voice')" class="tab" data-tab="voice">Voice</div>
+      </div>
+
+      <!-- Tab panels -->
+      <div id="panel-overview" class="tab-panel">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="cs-card rounded-2xl p-5">
+            <div class="section-title mb-3">Match Info</div>
+            <div class="space-y-1 text-sm" id="overview-info"></div>
+          </div>
+          <div class="cs-card rounded-2xl p-5">
+            <div class="section-title mb-3">Top Performers</div>
+            <div id="overview-top" class="text-sm space-y-1"></div>
+          </div>
+        </div>
+        <div class="mt-4 text-xs text-slate-400">All data extracted live from the demo using the demoinfocs-golang library (events, game state, net messages, trajectories, etc). No external services used.</div>
+      </div>
+
+      <div id="panel-players" class="tab-panel hidden">
+        <div class="cs-card rounded-2xl overflow-hidden">
+          <table class="w-full data-table">
+            <thead class="bg-slate-900 text-left text-xs uppercase text-slate-400">
+              <tr>
+                <th>Player</th><th>Team</th><th class="text-right">K</th><th class="text-right">D</th><th class="text-right">A</th>
+                <th class="text-right">Damage</th><th class="text-right">ADR</th><th class="text-right">HS</th>
+              </tr>
+            </thead>
+            <tbody id="players-tbody" class="divide-y divide-slate-800"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="panel-viewmodels" class="tab-panel hidden">
+        <div class="cs-card rounded-2xl p-4">
+          <div class="section-title mb-2">Player Viewmodel Settings <span class="text-[10px] text-amber-400">(CS2 only)</span></div>
+          <div class="text-xs text-slate-400 mb-2">Extracted via <code>player.ViewmodelOffset()</code>, <code>player.ViewmodelFOV()</code> and <code>player.CrosshairCode()</code> (sampled on round starts + end of demo).</div>
+          <div class="cs-card rounded-xl overflow-hidden border border-slate-800">
+            <table class="w-full data-table text-sm">
+              <thead class="bg-slate-900 text-left text-xs uppercase text-slate-400">
+                <tr>
+                  <th>Player</th>
+                  <th>Team</th>
+                  <th>Offset (X, Y, Z)</th>
+                  <th class="text-right">FOV</th>
+                  <th>Crosshair Code</th>
+                </tr>
+              </thead>
+              <tbody id="viewmodels-tbody" class="divide-y divide-slate-800"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="panel-rounds" class="tab-panel hidden">
+        <div class="cs-card rounded-2xl overflow-hidden">
+          <table class="w-full data-table text-sm">
+            <thead class="bg-slate-900 text-xs text-slate-400">
+              <tr><th class="w-12">#</th><th>Winner</th><th>Reason</th><th>Score (T-CT)</th></tr>
+            </thead>
+            <tbody id="rounds-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="panel-chat" class="tab-panel hidden">
+        <div class="flex gap-2 mb-2">
+          <input id="chat-filter" onkeyup="filterChat()" placeholder="Filter chat (player or text)..." class="flex-1 bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-sm">
+          <button onclick="clearChatFilter()" class="px-3 text-xs border border-slate-700 rounded hover:bg-slate-800">Clear</button>
+        </div>
+        <div class="cs-card rounded-2xl p-2 max-h-[420px] overflow-auto font-mono text-xs" id="chat-log"></div>
+      </div>
+
+      <div id="panel-kills" class="tab-panel hidden">
+        <div class="flex gap-2 mb-2 items-center">
+          <input id="kill-filter" onkeyup="filterKills()" placeholder="Filter killer / victim / weapon..." class="flex-1 bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-sm">
+          <select id="kill-round-filter" onchange="filterKills()" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm">
+            <option value="">All rounds</option>
+          </select>
+        </div>
+        <div class="cs-card rounded-2xl max-h-[480px] overflow-auto">
+          <table class="w-full data-table text-sm">
+            <thead class="sticky top-0 bg-slate-900 text-xs">
+              <tr><th>Tick</th><th>R</th><th>Killer</th><th></th><th>Victim</th><th>Weapon</th><th></th></tr>
+            </thead>
+            <tbody id="kills-tbody" class="divide-y divide-slate-800"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="panel-heatmaps" class="tab-panel hidden">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-x-3">
+            <div class="section-title">Shots Heatmap</div>
+            <div class="flex gap-x-1 text-xs">
+              <label class="flex items-center gap-x-1 cursor-pointer"><input type="checkbox" id="hm-t" checked onchange="drawHeatmap()" class="accent-emerald-500"> T</label>
+              <label class="flex items-center gap-x-1 cursor-pointer"><input type="checkbox" id="hm-ct" checked onchange="drawHeatmap()" class="accent-emerald-500"> CT</label>
+              <label class="flex items-center gap-x-1 cursor-pointer"><input type="checkbox" id="hm-all" checked onchange="drawHeatmap()" class="accent-emerald-500"> All</label>
+            </div>
+          </div>
+          <div>
+            <button onclick="downloadCanvas('heatmap-canvas', 'heatmap')" class="text-xs px-3 py-1 border border-slate-700 rounded hover:bg-slate-800">Download PNG</button>
+          </div>
+        </div>
+        <div class="cs-card rounded-2xl p-3">
+          <canvas id="heatmap-canvas" width="800" height="800" class="max-w-full border border-slate-800 rounded bg-[#111827]"></canvas>
+        </div>
+        <div class="mt-1 text-[10px] text-slate-500">Dots = WeaponFire positions. Use filters above. Radar background loaded from library assets when available.</div>
+      </div>
+
+      <div id="panel-nades" class="tab-panel hidden">
+        <div class="flex flex-wrap gap-2 mb-2 items-end">
+          <div>
+            <div class="section-title mb-1">Grenade Trajectories</div>
+            <div class="flex gap-1 text-xs flex-wrap" id="nade-type-filters">
+              <!-- populated by js: HE / Smoke / Flash / Molotov / Decoy -->
+            </div>
+          </div>
+          <div class="flex-1"></div>
+          <div>
+            <button onclick="downloadCanvas('nade-canvas', 'grenades')" class="text-xs px-3 py-1 border border-slate-700 rounded hover:bg-slate-800">Download PNG</button>
+            <button onclick="clearNadeSelection()" class="text-xs px-3 py-1 border border-slate-700 rounded hover:bg-slate-800">Show All</button>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-3">
+          <div class="lg:col-span-3 cs-card rounded-2xl p-3">
+            <canvas id="nade-canvas" width="800" height="800" class="max-w-full border border-slate-800 rounded bg-[#111827]"></canvas>
+          </div>
+          <div class="lg:col-span-2 cs-card rounded-2xl p-2 max-h-[420px] overflow-auto text-xs">
+            <table class="w-full">
+              <thead class="text-[10px] text-slate-400 sticky top-0 bg-slate-900">
+                <tr><th class="text-left">Round</th><th>Thrower</th><th>Type</th><th>Points</th></tr>
+              </thead>
+              <tbody id="nades-tbody" class="divide-y divide-slate-800"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="panel-voice" class="tab-panel hidden">
+        <div class="cs-card rounded-2xl p-4">
+          <div class="section-title mb-3">Voice Communications (raw packets from demo)</div>
+          <div id="voice-content" class="text-sm"></div>
+          <div class="mt-3 text-[10px] text-amber-400/80">Raw voice data is served as concatenated encoded packets (often Opus for CS2). Use external tools (CS2VoiceData, ffmpeg, etc.) for playback. Clips are auto-grouped by ~1s gaps.</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="no-demo-hint" class="text-center py-10 text-slate-400 text-sm">Select a demo above and click ANALYZE to extract chat, kills, nades, voice, heatmaps and more.</div>
+  </div>
+
+  <script>
+    let currentAnalysis = null;
+    let currentRadarImg = null;
+    let selectedNades = new Set();
+
+    const TAILWIND = document.createElement('style'); // already via cdn script
+    function initTailwind() {
+      // already included
+    }
+
+    async function refreshDemos() {
+      const sel = document.getElementById('demo-select');
+      sel.innerHTML = '<option>Loading...</option>';
+      try {
+        const res = await fetch('/api/demos');
+        const demos = await res.json();
+        sel.innerHTML = '';
+        if (!demos || demos.length === 0) {
+          const o = document.createElement('option');
+          o.textContent = 'No .dem files found in demos/';
+          sel.appendChild(o);
+          return;
+        }
+        demos.forEach(d => {
+          const o = document.createElement('option');
+          o.value = d.name;
+          const mb = (d.size / 1024 / 1024).toFixed(1);
+          o.textContent = `${d.name} (${mb} MB)`;
+          sel.appendChild(o);
+        });
+      } catch (e) {
+        sel.innerHTML = '<option>Error loading demos</option>';
+        console.error(e);
+      }
+    }
+
+    async function analyzeSelected() {
+      const sel = document.getElementById('demo-select').value;
+      if (!sel) { alert('Select a demo first'); return; }
+      await analyzeDemo(sel);
+    }
+
+    async function analyzeDemo(demoName) {
+      const status = document.getElementById('parse-status');
+      const main = document.getElementById('main-content');
+      const hint = document.getElementById('no-demo-hint');
+      const bar = document.getElementById('loaded-bar');
+
+      status.textContent = 'Parsing... (this can take a few seconds for long demos)';
+      status.className = 'text-xs px-3 py-1 text-amber-400';
+
+      try {
+        const res = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({demo: demoName})
+        });
+        const data = await res.json();
+        if (data.error) {
+          status.textContent = 'Error: ' + data.error;
+          status.className = 'text-xs px-3 py-1 text-red-400';
+          return;
+        }
+        currentAnalysis = data;
+        window.lastAnalysis = data;
+
+        // populate UI
+        populateAll(data);
+        main.classList.remove('hidden');
+        hint.classList.add('hidden');
+        bar.classList.remove('hidden');
+        bar.classList.add('flex');
+
+        document.getElementById('loaded-demo').textContent = data.demoName;
+        document.getElementById('loaded-meta').textContent = `${data.mapName} • ${data.duration ? data.duration.toFixed(0) : '?'}s`;
+
+        status.textContent = 'Done ✓';
+        status.className = 'text-xs px-3 py-1 text-emerald-400';
+        setTimeout(() => { status.textContent = ''; }, 1800);
+
+        // load radar for viz
+        await loadRadar(data.mapName);
+        // initial draws
+        drawHeatmap();
+        drawNades();
+      } catch (err) {
+        console.error(err);
+        status.textContent = 'Request failed: ' + err.message;
+        status.className = 'text-xs px-3 py-1 text-red-400';
+      }
+    }
+
+    function loadLastAnalysis() {
+      if (window.lastAnalysis) {
+        currentAnalysis = window.lastAnalysis;
+        const main = document.getElementById('main-content');
+        const hint = document.getElementById('no-demo-hint');
+        const bar = document.getElementById('loaded-bar');
+        populateAll(currentAnalysis);
+        main.classList.remove('hidden');
+        hint.classList.add('hidden');
+        bar.classList.remove('hidden');
+        bar.classList.add('flex');
+        loadRadar(currentAnalysis.mapName).then(() => {
+          drawHeatmap(); drawNades();
+        });
+      } else {
+        alert('No analysis in memory yet. Analyze a demo first.');
+      }
+    }
+
+    async function loadRadar(mapName) {
+      currentRadarImg = null;
+      if (!mapName) return;
+      try {
+        const res = await fetch('/api/radar?map=' + encodeURIComponent(mapName));
+        if (!res.ok) throw new Error('no radar');
+        const blob = await res.blob();
+        const img = new Image();
+        img.onload = () => {
+          currentRadarImg = img;
+          // redraw active viz
+          if (!document.getElementById('panel-heatmaps').classList.contains('hidden')) drawHeatmap();
+          if (!document.getElementById('panel-nades').classList.contains('hidden')) drawNades();
+        };
+        img.src = URL.createObjectURL(blob);
+      } catch (e) {
+        // no radar image, still ok - viz will show points on dark
+        console.log('No radar for', mapName);
+      }
+    }
+
+    function populateAll(a) {
+      // quick stats
+      document.getElementById('q-map').textContent = a.mapName || 'unknown';
+      document.getElementById('q-duration').textContent = (a.duration || 0).toFixed(1) + 's';
+      document.getElementById('q-players').textContent = a.players ? a.players.length : 0;
+      document.getElementById('q-rounds').textContent = a.rounds ? a.rounds.length : 0;
+      const lastRound = a.rounds && a.rounds.length ? a.rounds[a.rounds.length-1] : null;
+      document.getElementById('q-score').textContent = lastRound ? `${lastRound.tScore}:${lastRound.ctScore}` : '';
+      document.getElementById('q-tickrate').textContent = (a.tickRate || 0).toFixed(0);
+      document.getElementById('q-frames').textContent = (a.playbackTicks || 0) + ' frames';
+      document.getElementById('stat-kills').textContent = a.kills ? a.kills.length : 0;
+      document.getElementById('stat-chats').textContent = a.chats ? a.chats.length : 0;
+      document.getElementById('stat-nades').textContent = a.nades ? a.nades.length : 0;
+      document.getElementById('stat-shots').textContent = a.shots ? a.shots.length : 0;
+
+      // overview
+      renderOverview(a);
+
+      // players
+      renderPlayers(a.players || []);
+
+      // viewmodel settings (new feature)
+      renderViewmodels(a.players || []);
+
+      // rounds
+      renderRounds(a.rounds || []);
+
+      // chat
+      renderChat(a.chats || []);
+
+      // kills
+      renderKills(a.kills || []);
+
+      // populate round filter
+      const rf = document.getElementById('kill-round-filter');
+      rf.innerHTML = '<option value="">All rounds</option>';
+      const maxR = Math.max(0, ...(a.rounds||[]).map(r => r.number));
+      for (let i=1; i<=maxR; i++) {
+        const o = document.createElement('option'); o.value = i; o.textContent = 'Round ' + i;
+        rf.appendChild(o);
+      }
+
+      // nades table + type filters
+      renderNadesTable(a.nades || []);
+      setupNadeTypeFilters(a.nades || []);
+
+      // voice
+      renderVoice(a.voice || {players:[]}, a.demoName);
+
+      // set initial tab
+      switchTab('overview', true);
+    }
+
+    function renderOverview(a) {
+      const el = document.getElementById('overview-info');
+      el.innerHTML = `
+        <div><span class="text-slate-400">Map:</span> <span class="font-semibold">${a.mapName || '—'}</span></div>
+        <div><span class="text-slate-400">Duration:</span> ${(a.duration||0).toFixed(1)} seconds</div>
+        <div><span class="text-slate-400">Tick rate:</span> ${(a.tickRate||0).toFixed(1)}</div>
+        <div><span class="text-slate-400">Rounds played:</span> ${(a.rounds||[]).length}</div>
+        <div><span class="text-slate-400">Total shots recorded:</span> ${(a.shots||[]).length}</div>
+        <div><span class="text-slate-400">Grenades thrown:</span> ${(a.nades||[]).length}</div>
+        <div><span class="text-slate-400">Chat messages:</span> ${(a.chats||[]).length}</div>
+        <div><span class="text-slate-400">Viewmodel settings:</span> ${(a.players||[]).filter(p => p.viewmodelFOV || p.crosshairCode || (p.viewmodelOffset && (p.viewmodelOffset.X||p.viewmodelOffset.Y||p.viewmodelOffset.Z))).length } / ${(a.players||[]).length} players (CS2 feature)</div>
+      `;
+
+      const top = document.getElementById('overview-top');
+      top.innerHTML = '';
+      const sorted = [...(a.players||[])].sort((x,y) => y.kills - x.kills).slice(0,5);
+      sorted.forEach(p => {
+        const d = document.createElement('div');
+        d.className = 'flex justify-between';
+        d.innerHTML = `<div>${p.name} <span class="text-[10px] text-slate-400">[${p.team}]</span></div><div class="font-mono text-emerald-400">${p.kills}/${p.deaths}/${p.assists}</div>`;
+        top.appendChild(d);
+      });
+      if (!sorted.length) top.textContent = 'No player data';
+    }
+
+    function renderPlayers(players) {
+      const tb = document.getElementById('players-tbody');
+      tb.innerHTML = '';
+      players.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="font-medium">${escapeHtml(p.name)}</td>
+          <td><span class="px-1.5 py-px rounded text-xs ${p.team==='T'?'bg-orange-900/70 text-orange-300':'bg-sky-900/70 text-sky-300'}">${p.team}</span></td>
+          <td class="text-right font-semibold">${p.kills}</td>
+          <td class="text-right">${p.deaths}</td>
+          <td class="text-right text-slate-400">${p.assists}</td>
+          <td class="text-right">${p.damage}</td>
+          <td class="text-right text-emerald-400">${(p.adr||0).toFixed(1)}</td>
+          <td class="text-right">${p.headshots}</td>
+        `;
+        tb.appendChild(tr);
+      });
+    }
+
+    function renderViewmodels(players) {
+      const tb = document.getElementById('viewmodels-tbody');
+      if (!tb) return;
+      tb.innerHTML = '';
+      // Only show players that have some viewmodel data (or all, to be complete)
+      const withData = players.filter(p => p.viewmodelFOV || p.crosshairCode || (p.viewmodelOffset && (p.viewmodelOffset.X || p.viewmodelOffset.Y || p.viewmodelOffset.Z)));
+      const list = (withData.length > 0 ? withData : players);
+      list.forEach(p => {
+        const vm = p.viewmodelOffset || {X:0, Y:0, Z:0};
+        const fov = (p.viewmodelFOV || 0).toFixed(1);
+        const cross = p.crosshairCode || '';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="font-medium">${escapeHtml(p.name)}</td>
+          <td><span class="px-1.5 py-px rounded text-xs ${p.team==='T'?'bg-orange-900/70 text-orange-300':'bg-sky-900/70 text-sky-300'}">${p.team}</span></td>
+          <td class="font-mono text-xs">${vm.X.toFixed(1)}, ${vm.Y.toFixed(1)}, ${vm.Z.toFixed(1)}</td>
+          <td class="text-right font-mono">${fov}</td>
+          <td class="font-mono text-xs text-slate-300">${escapeHtml(cross) || '<span class="text-slate-500">—</span>'}</td>
+        `;
+        tb.appendChild(tr);
+      });
+      if (list.length === 0) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="5" class="text-slate-400 text-xs py-2">No viewmodel data (feature is CS2-only and requires player pawn entities).</td>`;
+        tb.appendChild(tr);
+      }
+    }
+
+    function renderRounds(rounds) {
+      const tb = document.getElementById('rounds-tbody');
+      tb.innerHTML = '';
+      rounds.forEach(r => {
+        const tr = document.createElement('tr');
+        const w = r.winner === 'T' ? 'text-orange-400' : (r.winner==='CT' ? 'text-sky-400' : '');
+        tr.innerHTML = `
+          <td class="font-mono text-slate-400">${r.number}</td>
+          <td class="${w} font-medium">${r.winner}</td>
+          <td class="text-slate-400">${r.reason}</td>
+          <td class="font-mono">${r.tScore} : ${r.ctScore}</td>
+        `;
+        tb.appendChild(tr);
+      });
+    }
+
+    let chatData = [];
+    function renderChat(chats) {
+      chatData = chats;
+      filterChat();
+    }
+    function filterChat() {
+      const q = (document.getElementById('chat-filter').value || '').toLowerCase();
+      const log = document.getElementById('chat-log');
+      log.innerHTML = '';
+      const filtered = chatData.filter(c => !q || c.sender.toLowerCase().includes(q) || c.text.toLowerCase().includes(q));
+      filtered.slice(-300).forEach(c => {  // limit dom
+        const d = document.createElement('div');
+        d.className = 'log-line px-2 py-px border-l-2 border-slate-700 mb-px flex gap-2';
+        d.innerHTML = `<span class="text-slate-500 w-12 shrink-0">${c.tick}</span> <span class="text-emerald-300 font-medium shrink-0">${escapeHtml(c.sender)}:</span> <span>${escapeHtml(c.text)}</span>`;
+        log.appendChild(d);
+      });
+    }
+    function clearChatFilter() {
+      document.getElementById('chat-filter').value = '';
+      filterChat();
+    }
+
+    let killsData = [];
+    function renderKills(kills) {
+      killsData = kills;
+      filterKills();
+    }
+    function filterKills() {
+      const q = (document.getElementById('kill-filter').value || '').toLowerCase();
+      const roundF = document.getElementById('kill-round-filter').value;
+      const tb = document.getElementById('kills-tbody');
+      tb.innerHTML = '';
+      const f = killsData.filter(k => {
+        if (roundF && String(k.round) !== roundF) return false;
+        if (!q) return true;
+        return (k.killer+'').toLowerCase().includes(q) || (k.victim+'').toLowerCase().includes(q) || (k.weapon+'').toLowerCase().includes(q);
+      });
+      f.slice(0, 400).forEach(k => {
+        const tr = document.createElement('tr');
+        const hs = k.headshot ? ' <span class="text-red-400">HS</span>' : '';
+        const wb = k.wallbang ? ' <span class="text-amber-400">WB</span>' : '';
+        tr.innerHTML = `
+          <td class="text-slate-400 font-mono text-xs">${k.tick}</td>
+          <td class="text-xs text-slate-400">${k.round}</td>
+          <td>${escapeHtml(k.killer)}</td>
+          <td class="text-red-400">→</td>
+          <td>${escapeHtml(k.victim)}</td>
+          <td class="font-medium">${escapeHtml(k.weapon)}${hs}${wb}</td>
+          <td class="text-xs text-slate-400">${k.assister ? 'via ' + escapeHtml(k.assister) : ''}</td>
+        `;
+        tb.appendChild(tr);
+      });
+    }
+
+    // Heatmap
+    function drawHeatmap() {
+      const canvas = document.getElementById('heatmap-canvas');
+      const ctx = canvas.getContext('2d', {alpha: true});
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (!currentAnalysis) return;
+
+      const w = canvas.width, h = canvas.height;
+      if (currentRadarImg) {
+        ctx.drawImage(currentRadarImg, 0, 0, w, h);
+      } else {
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = '#334155';
+        ctx.fillText(currentAnalysis.mapName || '', 20, 30);
+      }
+
+      const showT = document.getElementById('hm-t').checked;
+      const showCT = document.getElementById('hm-ct').checked;
+      const showAll = document.getElementById('hm-all').checked;
+
+      const shots = currentAnalysis.shots || [];
+      const meta = currentAnalysis.mapMeta;
+
+      ctx.fillStyle = 'rgba(163, 163, 172, 0.65)';
+      let drawn = 0;
+      for (let i = 0; i < shots.length; i++) {
+        const s = shots[i];
+        if (!showAll) {
+          if (s.team === 'T' && !showT) continue;
+          if (s.team === 'CT' && !showCT) continue;
+        }
+        let rx, ry;
+        if (meta && meta.scale) {
+          rx = (s.x - meta.posX) / meta.scale;
+          ry = (meta.posY - s.y) / meta.scale;
+        } else {
+          // fallback naive scale (demo units roughly -2000..2000 -> 0..800)
+          rx = (s.x + 2500) / 5000 * w;
+          ry = (s.y + 2500) / 5000 * h;
+        }
+        // clamp
+        if (rx < 0 || rx > w || ry < 0 || ry > h) continue;
+
+        ctx.beginPath();
+        ctx.arc(rx * (w / (meta ? 1024 : 1)) * (meta ? 0.8 : 1) , ry * (h / (meta ? 1024 : 1)) * (meta ? 0.8 : 1), 2.2, 0, Math.PI*2);
+        // better: assume radar img coords roughly match translated values. If radar 1024 we fit.
+        // Simpler approach: use direct proportion if no meta
+        let drawX = rx;
+        let drawY = ry;
+        if (!meta) {
+          drawX = (s.x + 2000) / 4000 * w;
+          drawY = (s.y + 2000) / 4000 * h;
+        }
+        ctx.arc(drawX, drawY, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+        drawn++;
+        if (drawn > 12000) break; // perf
+      }
+    }
+
+    // Nades / trajectories
+    function setupNadeTypeFilters(nades) {
+      const cont = document.getElementById('nade-type-filters');
+      cont.innerHTML = '';
+      const types = [...new Set(nades.map(n => n.weapon))];
+      const colors = { HE: '#22c55e', Smoke: '#64748b', Flash: '#3b82f6', Molotov: '#f59e0b', Decoy: '#854d0e' };
+      types.forEach(t => {
+        const id = 'nt-' + t.replace(/\s+/g,'');
+        const lab = document.createElement('label');
+        lab.className = 'filter-chip cursor-pointer flex items-center gap-x-1 px-2';
+        lab.innerHTML = `<input type="checkbox" id="${id}" checked onchange="drawNades()" class="accent-emerald-500"> <span>${t}</span>`;
+        cont.appendChild(lab);
+      });
+    }
+
+    function getSelectedNadeTypes() {
+      const boxes = document.querySelectorAll('#nade-type-filters input[type=checkbox]');
+      const sel = new Set();
+      boxes.forEach(b => { if (b.checked) sel.add(b.id.replace('nt-','')); });
+      return sel;
+    }
+
+    function renderNadesTable(nades) {
+      const tb = document.getElementById('nades-tbody');
+      tb.innerHTML = '';
+      nades.slice(0, 120).forEach((n, idx) => {
+        const tr = document.createElement('tr');
+        tr.className = 'cursor-pointer hover:bg-slate-800';
+        tr.onclick = () => toggleNadeHighlight(n.id, tr);
+        tr.innerHTML = `
+          <td>${n.round}</td>
+          <td class="font-medium">${escapeHtml(n.thrower)}</td>
+          <td><span style="color:${getNadeColor(n.weapon)}">${n.weapon}</span></td>
+          <td class="text-slate-400">${(n.trajectory||[]).length}</td>
+        `;
+        tr.dataset.nadeId = n.id;
+        tb.appendChild(tr);
+      });
+    }
+
+    function getNadeColor(weapon) {
+      if (weapon.includes('HE') || weapon === 'HE') return '#22c55e';
+      if (weapon.includes('Smoke')) return '#94a3b8';
+      if (weapon.includes('Flash')) return '#60a5fa';
+      if (weapon.includes('Molotov') || weapon.includes('Incendiary')) return '#fb923c';
+      return '#a3a3a3';
+    }
+
+    function toggleNadeHighlight(nadeId, rowEl) {
+      if (selectedNades.has(nadeId)) {
+        selectedNades.delete(nadeId);
+        rowEl.classList.remove('!bg-emerald-900/30');
+      } else {
+        selectedNades.add(nadeId);
+        rowEl.classList.add('!bg-emerald-900/30');
+      }
+      drawNades();
+    }
+
+    function clearNadeSelection() {
+      selectedNades.clear();
+      document.querySelectorAll('#nades-tbody tr').forEach(r => r.classList.remove('!bg-emerald-900/30'));
+      drawNades();
+    }
+
+    function drawNades() {
+      const canvas = document.getElementById('nade-canvas');
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (!currentAnalysis) return;
+      const w = canvas.width, h = canvas.height;
+
+      if (currentRadarImg) {
+        ctx.drawImage(currentRadarImg, 0, 0, w, h);
+      } else {
+        ctx.fillStyle = '#0f172a'; ctx.fillRect(0,0,w,h);
+      }
+
+      const allNades = currentAnalysis.nades || [];
+      const selectedTypes = getSelectedNadeTypes();
+      const meta = currentAnalysis.mapMeta;
+
+      const toDraw = allNades.filter(n => {
+        if (selectedTypes.size > 0 && !selectedTypes.has(n.weapon)) return false;
+        return true;
+      });
+
+      ctx.lineWidth = 1.6;
+      ctx.lineJoin = 'round';
+
+      toDraw.forEach(n => {
+        if (!n.trajectory || n.trajectory.length < 2) return;
+        const isSel = selectedNades.size === 0 || selectedNades.has(n.id);
+        ctx.strokeStyle = isSel ? getNadeColor(n.weapon) : '#475569';
+        ctx.globalAlpha = isSel ? 0.95 : 0.35;
+
+        ctx.beginPath();
+        let started = false;
+        n.trajectory.forEach((pt, i) => {
+          let rx, ry;
+          if (meta && meta.scale) {
+            rx = (pt.x - meta.posX) / meta.scale;
+            ry = (meta.posY - pt.y) / meta.scale;
+          } else {
+            rx = (pt.x + 2200) / 4400 * w;
+            ry = (pt.y + 2200) / 4400 * h;
+          }
+          if (!started) { ctx.moveTo(rx, ry); started = true; }
+          else { ctx.lineTo(rx, ry); }
+        });
+        ctx.stroke();
+      });
+      ctx.globalAlpha = 1.0;
+
+      // also draw start markers for selected
+      ctx.fillStyle = '#eab308';
+      toDraw.forEach(n => {
+        if (selectedNades.size > 0 && !selectedNades.has(n.id)) return;
+        if (!n.trajectory || !n.trajectory.length) return;
+        const pt = n.trajectory[0];
+        let rx, ry;
+        if (meta && meta.scale) {
+          rx = (pt.x - meta.posX) / meta.scale; ry = (meta.posY - pt.y) / meta.scale;
+        } else { rx = (pt.x + 2200)/4400*w; ry = (pt.y+2200)/4400*h; }
+        ctx.beginPath(); ctx.arc(rx, ry, 3, 0, Math.PI*2); ctx.fill();
+      });
+    }
+
+    function renderVoice(voice, demoName) {
+      const el = document.getElementById('voice-content');
+      el.innerHTML = '';
+      if (!voice.players || voice.players.length === 0) {
+        el.innerHTML = '<div class="text-slate-400">No voice data found in this demo (common for some POV or older demos). svc_VoiceData messages were not present or empty.</div>';
+        return;
+      }
+      const wrap = document.createElement('div');
+      wrap.className = 'space-y-3';
+      voice.players.forEach(pl => {
+        const d = document.createElement('div');
+        d.className = 'border border-slate-700 rounded p-3';
+        let html = `<div class="flex justify-between"><div><span class="font-medium">${escapeHtml(pl.name)}</span> <span class="text-xs text-slate-400">(${pl.totalPackets} packets, ${(pl.totalBytes/1024).toFixed(1)} KB)</span></div></div>`;
+        html += `<div class="mt-1.5 flex flex-wrap gap-1">`;
+        pl.clips.forEach((c, i) => {
+          html += `<button onclick="downloadVoiceClip('${demoName}', ${pl.steamId64}, ${c.index}, this)" class="text-[10px] px-2 py-0.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded">Clip ${c.index} (${c.numPackets}p / ${Math.round(c.totalBytes/1024)}kB) t:${c.startTick}-${c.endTick}</button>`;
+        });
+        html += `</div>`;
+        d.innerHTML = html;
+        wrap.appendChild(d);
+      });
+      el.appendChild(wrap);
+    }
+
+    async function downloadVoiceClip(demoName, steamId, clipIdx, btn) {
+      const orig = btn.textContent;
+      btn.textContent = 'Downloading...';
+      try {
+        const url = `/api/voice-clip?demo=${encodeURIComponent(demoName)}&steamid=${steamId}&clip=${clipIdx}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('no data');
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `voice_${demoName.replace('.dem','')}_${steamId}_${clipIdx}.bin`;
+        document.body.appendChild(a); a.click(); a.remove();
+      } catch (e) {
+        alert('Failed to download clip: ' + e.message + '. The demo may need to be re-analyzed.');
+      } finally {
+        btn.textContent = orig;
+      }
+    }
+
+    function downloadCanvas(canvasId, prefix) {
+      const c = document.getElementById(canvasId);
+      if (!c) return;
+      const a = document.createElement('a');
+      a.href = c.toDataURL('image/png');
+      a.download = `${prefix}_${(currentAnalysis && currentAnalysis.mapName) || 'map'}.png`;
+      a.click();
+    }
+
+    function exportFull() {
+      if (!currentAnalysis) return;
+      const blob = new Blob([JSON.stringify(currentAnalysis, null, 2)], {type: 'application/json'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `analysis_${currentAnalysis.demoName.replace('.dem','')}.json`;
+      a.click();
+    }
+
+    function switchTab(name, force) {
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      const panel = document.getElementById('panel-' + name);
+      if (panel) panel.classList.remove('hidden');
+      const tab = document.querySelector(`.tab[data-tab="${name}"]`);
+      if (tab) tab.classList.add('active');
+
+      // lazy draw
+      if (name === 'heatmaps' && currentAnalysis) setTimeout(drawHeatmap, 30);
+      if (name === 'nades' && currentAnalysis) setTimeout(drawNades, 30);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+    }
+
+    function initFilters() {
+      // round filter change already wired in html onchange
+      // additional global filter hook example (could be expanded)
+      document.getElementById('hm-t').onchange = drawHeatmap;
+      document.getElementById('hm-ct').onchange = drawHeatmap;
+    }
+
+    function initKeyboard() {
+      document.addEventListener('keydown', e => {
+        if (e.key === '/' && document.activeElement.tagName === 'BODY') {
+          e.preventDefault();
+          const chat = document.getElementById('chat-filter');
+          if (chat) { switchTab('chat'); chat.focus(); }
+        }
+      });
+    }
+
+    // Boot
+    window.addEventListener('load', () => {
+      initTailwind();
+      refreshDemos();
+      initFilters();
+      initKeyboard();
+      // hint user can drag demo? no, simple
+      console.log('%c[demoinfocs-analyzer] ready. Library provides: events (kills, chat, nades, weaponfire, round, hurt...), GameState, net messages (voice), trajectories, map metadata.', 'color:#334155');
+    });
+
+    // Expose a couple helpers for power users in console
+    window.analyzeDemo = analyzeDemo;
+    window.getAnalysis = () => currentAnalysis;
+  </script>
+</body>
+</html>

@@ -8,3 +8,7 @@ log.*
 coverage.*
 *.out
 demoinfocs.test
+
+# Demo Analyzer App
+analyzer.exe
+demos/
