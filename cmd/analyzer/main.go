@@ -282,8 +282,32 @@ func newParseState(demoName string) *parseState {
 	}
 }
 
+// isGOTV returns true for the GOTV spectator entity that records the demo
+// (e.g. "ESL GOTV", "GOTV", "Valve GOTV", "ESL TV", etc.). These are not real players.
+func isGOTV(p *common.Player) bool {
+	if p == nil {
+		return true
+	}
+	name := strings.ToLower(strings.TrimSpace(p.Name))
+	if strings.Contains(name, "gotv") ||
+		strings.Contains(name, "esltv") ||
+		strings.Contains(name, "hltv") ||
+		strings.Contains(name, "valve tv") ||
+		strings.Contains(name, "tv ") && strings.Contains(name, "gotv") {
+		return true
+	}
+	// Common for pure GOTV: no real SteamID + bot + often unassigned/spectator
+	if p.SteamID64 == 0 && p.IsBot {
+		return true
+	}
+	return false
+}
+
 func (st *parseState) ensurePlayer(p *common.Player) *PlayerStat {
 	if p == nil {
+		return nil
+	}
+	if isGOTV(p) {
 		return nil
 	}
 	sid := p.SteamID64
@@ -392,7 +416,7 @@ func parseDemo(demoPath string) (*Analysis, error) {
 		// Capture viewmodel settings for playing players (CS2 only feature from the library)
 		// This follows the pattern from examples/viewmodel-settings
 		for _, pl := range gs.Participants().Playing() {
-			if pl != nil {
+			if pl != nil && !isGOTV(pl) {
 				st.ensurePlayer(pl) // will pull ViewmodelOffset/FOV/CrosshairCode via the player methods
 			}
 		}
@@ -428,6 +452,9 @@ func parseDemo(demoPath string) (*Analysis, error) {
 
 	// Kills
 	p.RegisterEventHandler(func(e events.Kill) {
+		if isGOTV(e.Killer) || isGOTV(e.Victim) {
+			return // ignore any "kills" involving the GOTV recorder
+		}
 		tick := p.GameState().IngameTick()
 		round := st.currentRound
 		killer := "?"
@@ -472,7 +499,7 @@ func parseDemo(demoPath string) (*Analysis, error) {
 
 	// WeaponFire for heatmaps / shots
 	p.RegisterEventHandler(func(e events.WeaponFire) {
-		if e.Shooter == nil {
+		if e.Shooter == nil || isGOTV(e.Shooter) {
 			return
 		}
 		tick := p.GameState().IngameTick()
@@ -492,7 +519,7 @@ func parseDemo(demoPath string) (*Analysis, error) {
 
 	// PlayerHurt for damage stats (ADR)
 	p.RegisterEventHandler(func(e events.PlayerHurt) {
-		if e.Attacker == nil || e.Attacker == e.Player {
+		if e.Attacker == nil || e.Attacker == e.Player || isGOTV(e.Attacker) {
 			return
 		}
 		if ps := st.ensurePlayer(e.Attacker); ps != nil {
@@ -502,6 +529,9 @@ func parseDemo(demoPath string) (*Analysis, error) {
 
 	// Chat
 	p.RegisterEventHandler(func(e events.ChatMessage) {
+		if isGOTV(e.Sender) {
+			return
+		}
 		tick := p.GameState().IngameTick()
 		sender := "?"
 		if e.Sender != nil {
@@ -516,7 +546,7 @@ func parseDemo(demoPath string) (*Analysis, error) {
 
 	// Grenade throws / trajectories
 	p.RegisterEventHandler(func(e events.GrenadeProjectileThrow) {
-		if e.Projectile == nil || e.Projectile.Thrower == nil {
+		if e.Projectile == nil || e.Projectile.Thrower == nil || isGOTV(e.Projectile.Thrower) {
 			return
 		}
 		id := e.Projectile.UniqueID()
@@ -613,6 +643,9 @@ func parseDemo(demoPath string) (*Analysis, error) {
 	gs := p.GameState()
 	// merge any missing players from final state
 	for _, pl := range gs.Participants().All() {
+		if isGOTV(pl) {
+			continue
+		}
 		st.ensurePlayer(pl)
 	}
 
@@ -687,11 +720,16 @@ func buildVoiceInfo(st *parseState, gs demoinfocs.GameState) VoiceInfo {
 		}
 		// find player name - no direct BySteamID on participants, use full scan (small N)
 		name := "?"
-		for _, pl := range gs.Participants().All() {
-			if pl.SteamID64 == sid {
-				name = pl.Name
+		var pl *common.Player
+		for _, candidate := range gs.Participants().All() {
+			if candidate.SteamID64 == sid {
+				pl = candidate
+				name = candidate.Name
 				break
 			}
+		}
+		if pl != nil && isGOTV(pl) {
+			continue // skip GOTV voice (shouldn't happen but defensive)
 		}
 		// sort packets by tick just in case
 		sort.Slice(packets, func(i, j int) bool { return packets[i].tick < packets[j].tick })

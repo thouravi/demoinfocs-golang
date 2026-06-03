@@ -9,117 +9,155 @@
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap');
     :root { --accent: #22c55e; }
     body { font-family: 'Inter', system_ui, sans-serif; }
-    .font-display { font-family: 'Space Grotesk', 'Inter', system_ui, sans-serif; }
-    .cs-card { background: #0f172a; border: 1px solid #1e2937; }
-    .tab { padding: 0.5rem 1rem; font-weight: 500; border-bottom: 2px solid transparent; cursor: pointer; }
-    .tab.active { border-bottom-color: #22c55e; color: #22c55e; }
-    .section-title { font-size: 0.75rem; letter-spacing: 0.05em; text-transform: uppercase; color: #64748b; }
+    .font-display { font-family: 'Space Grotesk', 'Inter', system_ui, sans-serif; letter-spacing: -0.02em; }
+    .cs-card { 
+      background: #0f172a; 
+      border: 1px solid #1e2937; 
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      transition: border-color .1s ease, box-shadow .1s ease;
+    }
+    .cs-card:hover { border-color: #334155; }
+    .tab { 
+      padding: 0.55rem 1.05rem; 
+      font-weight: 500; 
+      border-bottom: 3px solid transparent; 
+      cursor: pointer; 
+      color: #94a3b8;
+      border-radius: 6px 6px 0 0;
+      transition: all .1s ease;
+    }
+    .tab:hover { color: #e2e8f0; background: rgba(15,23,42,0.6); }
+    .tab.active { 
+      border-bottom-color: #22c55e; 
+      color: #f1f5f9; 
+      font-weight: 600; 
+      background: rgba(16,185,129,0.06);
+    }
+    .section-title { 
+      font-size: 0.7rem; 
+      letter-spacing: 0.08em; 
+      text-transform: uppercase; 
+      color: #64748b; 
+      font-weight: 600;
+    }
     table { border-collapse: separate; border-spacing: 0; }
-    th, td { padding: 0.5rem 0.75rem; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    th, td { padding: 0.55rem 0.8rem; }
     .data-table { font-size: 0.875rem; }
+    .data-table tbody tr { transition: background .08s ease; }
     .data-table tr:hover { background: #1e2937; }
-    .nade-line { stroke-width: 1.5; stroke-opacity: 0.85; }
-    canvas { image-rendering: crisp-edges; }
+    canvas { image-rendering: crisp-edges; display: block; }
     .log-line { font-size: 0.8rem; line-height: 1.25rem; }
-    .stat { font-feature-settings: "tnum"; }
-    .filter-chip { font-size: 0.75rem; padding: 1px 8px; border-radius: 9999px; background: #1e2937; }
+    .filter-chip { font-size: 0.7rem; padding: 2px 10px; border-radius: 9999px; background: #1e2937; border: 1px solid #334155; }
+    .modern-btn {
+      transition: transform .05s ease, box-shadow .1s ease;
+    }
+    .modern-btn:active { transform: translateY(1px); }
+    .stat-card { transition: transform .1s ease; }
+    .stat-card:hover { transform: translateY(-1px); }
   </style>
 </head>
 <body class="bg-slate-950 text-slate-200">
   <div class="max-w-[1280px] mx-auto p-4">
     <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
-      <div>
+    <div class="flex items-center justify-between mb-5">
+      <div class="flex items-center gap-x-4">
         <div class="flex items-center gap-x-3">
-          <div class="w-9 h-9 bg-emerald-500 rounded flex items-center justify-center text-slate-950 font-bold text-xl">CS</div>
+          <div class="w-10 h-10 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-2xl flex items-center justify-center text-slate-950 font-bold text-2xl shadow-lg shadow-emerald-900/30">CS</div>
           <div>
-            <div class="font-display text-3xl font-semibold tracking-tighter">demoinfocs <span class="text-emerald-400">analyzer</span></div>
-            <div class="text-[10px] text-slate-500 -mt-1">powered by demoinfocs-golang v5</div>
+            <div class="font-display text-4xl font-semibold tracking-[-0.03em]">demoinfocs <span class="bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">analyzer</span></div>
+            <div class="text-[10px] text-slate-500 tracking-[1px] -mt-1 font-medium">POWERED BY DEMOINFOCS-GOLANG V5 • CS2 / CS:GO</div>
           </div>
         </div>
       </div>
-      <div class="flex items-center gap-x-2 text-sm">
-        <div class="px-3 py-1.5 bg-slate-900 rounded border border-slate-800 text-slate-400">demos/ folder</div>
+      <div class="flex items-center gap-x-2">
+        <div class="hidden md:flex items-center px-3 py-1.5 text-xs bg-slate-900/70 border border-slate-800 rounded-2xl text-slate-400">
+          <span class="font-mono">demos/</span>
+        </div>
         <button onclick="refreshDemos()" 
-                class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded text-sm flex items-center gap-x-1.5">
+                class="modern-btn px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 active:bg-slate-950 border border-slate-700 hover:border-slate-600 rounded-2xl text-sm flex items-center gap-x-2 text-slate-300">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.058 11H1M12 3v2m0 16v2m9-9H15m-6 0a8 8 0 01-.938-1.5" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.25" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.058 11H1M12 3v2m0 16v2m9-9H15m-6 0a8 8 0 01-.938-1.5" />
           </svg>
-          <span>Refresh</span>
+          <span class="font-medium">Refresh</span>
         </button>
       </div>
     </div>
 
     <!-- Demo selector -->
-    <div class="cs-card rounded-2xl p-4 mb-5">
-      <div class="flex flex-wrap gap-3 items-end">
-        <div class="flex-1 min-w-[260px]">
-          <div class="section-title mb-1.5">Select Demo</div>
-          <select id="demo-select" class="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500">
-            <option value="">— loading demos —</option>
+    <div class="cs-card rounded-3xl p-5 mb-6 border-slate-700">
+      <div class="flex flex-col md:flex-row gap-4 items-end">
+        <div class="flex-1 w-full">
+          <div class="flex items-baseline justify-between mb-1.5 px-0.5">
+            <div class="section-title">Choose a demo file</div>
+            <div class="text-[10px] text-emerald-500/70 font-medium tracking-widest">FROM demos/</div>
+          </div>
+          <select id="demo-select" class="w-full bg-slate-900/80 border border-slate-700 focus:border-emerald-600 text-white rounded-2xl px-4 py-3 text-sm font-medium focus:outline-none transition-colors">
+            <option value="">— loading available demos —</option>
           </select>
         </div>
-        <button onclick="analyzeSelected()" 
-                class="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 transition-colors text-slate-950 font-semibold rounded-xl flex items-center gap-x-2 text-sm">
-          <span>ANALYZE</span>
-        </button>
-        <button onclick="loadLastAnalysis()" 
-                class="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-sm">Load last</button>
-        <div id="parse-status" class="text-xs px-3 py-1 text-emerald-400"></div>
+        <div class="flex gap-2 w-full md:w-auto">
+          <button onclick="analyzeSelected()" 
+                  class="modern-btn flex-1 md:flex-none px-8 py-3 bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-slate-950 font-semibold rounded-2xl flex items-center justify-center gap-x-2 text-sm shadow-lg shadow-emerald-500/30">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M14 5l7 7-7 7M5 12h14" /></svg>
+            <span>ANALYZE DEMO</span>
+          </button>
+          <button onclick="loadLastAnalysis()" 
+                  class="modern-btn px-4 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-2xl text-sm font-medium text-slate-300">Last</button>
+        </div>
       </div>
-      <div class="mt-2 text-[11px] text-slate-500">Place .dem files in the <span class="font-mono">demos/</span> folder next to the analyzer. Supports CS2 and CS:GO demos.</div>
+      <div id="parse-status" class="mt-3 text-xs px-1 text-emerald-400/90 min-h-[1rem]"></div>
+      <div class="mt-1 px-0.5 text-[10px] text-slate-500">Drop .dem replays into the <span class="font-mono text-slate-400">demos/</span> folder. Full support for CS2 + legacy CS:GO.</div>
     </div>
 
     <!-- Loaded info bar -->
-    <div id="loaded-bar" class="hidden mb-4 items-center gap-x-4 bg-slate-900 border border-slate-800 px-4 py-2 rounded-2xl text-sm">
-      <div class="flex-1">
-        <span id="loaded-demo" class="font-semibold"></span>
-        <span id="loaded-meta" class="text-slate-400 ml-2"></span>
+    <div id="loaded-bar" class="hidden mb-5 items-center gap-x-3 bg-slate-900/60 border border-slate-800 px-4 py-2.5 rounded-3xl text-sm backdrop-blur">
+      <div class="flex-1 flex items-center gap-x-2">
+        <span id="loaded-demo" class="font-semibold text-emerald-100"></span>
+        <span id="loaded-meta" class="text-slate-400 text-xs"></span>
       </div>
-      <div class="flex gap-x-2 text-xs">
-        <div class="filter-chip px-2"> <span id="stat-kills">0</span> kills</div>
-        <div class="filter-chip px-2"> <span id="stat-chats">0</span> chats</div>
-        <div class="filter-chip px-2"> <span id="stat-nades">0</span> nades</div>
-        <div class="filter-chip px-2"> <span id="stat-shots">0</span> shots</div>
+      <div class="flex gap-x-1.5 text-[10px]">
+        <div class="filter-chip"><span id="stat-kills">0</span> kills</div>
+        <div class="filter-chip"><span id="stat-chats">0</span> chats</div>
+        <div class="filter-chip"><span id="stat-nades">0</span> nades</div>
+        <div class="filter-chip"><span id="stat-shots">0</span> shots</div>
       </div>
-      <button onclick="exportFull()" class="text-emerald-400 hover:text-emerald-300 text-xs px-2 py-0.5 border border-emerald-900 rounded">Export JSON</button>
+      <button onclick="exportFull()" class="modern-btn text-emerald-400 hover:text-emerald-300 hover:bg-emerald-950/40 text-xs px-3 py-1 border border-emerald-900/60 rounded-2xl font-medium">Export JSON</button>
     </div>
 
     <!-- Main content -->
     <div id="main-content" class="hidden">
       <!-- Quick stats -->
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <div class="cs-card rounded-2xl p-4">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div class="cs-card rounded-3xl p-4 stat-card">
           <div class="section-title">Map / Duration</div>
-          <div class="mt-1 text-2xl font-semibold" id="q-map">de_dust2</div>
-          <div class="text-emerald-400 text-sm" id="q-duration">—</div>
+          <div class="mt-1.5 text-2xl font-semibold tracking-tight" id="q-map">de_dust2</div>
+          <div class="text-emerald-400 text-sm font-medium" id="q-duration">—</div>
         </div>
-        <div class="cs-card rounded-2xl p-4">
+        <div class="cs-card rounded-3xl p-4 stat-card">
           <div class="section-title">Players</div>
-          <div class="mt-1 flex items-baseline gap-x-2">
-            <div class="text-2xl font-semibold" id="q-players">10</div>
+          <div class="mt-1.5 flex items-baseline gap-x-2">
+            <div class="text-3xl font-semibold tracking-tighter" id="q-players">10</div>
             <div class="text-xs text-slate-400">in match</div>
           </div>
-          <div class="text-xs text-slate-400" id="q-teams">—</div>
+          <div class="text-xs text-slate-400 mt-0.5" id="q-teams">—</div>
         </div>
-        <div class="cs-card rounded-2xl p-4">
+        <div class="cs-card rounded-3xl p-4 stat-card">
           <div class="section-title">Rounds</div>
-          <div class="mt-1 text-2xl font-semibold" id="q-rounds">—</div>
-          <div class="mt-0.5 text-xs">Last score <span id="q-score" class="font-mono"></span></div>
+          <div class="mt-1.5 text-3xl font-semibold tracking-tighter" id="q-rounds">—</div>
+          <div class="mt-0.5 text-xs">Last score <span id="q-score" class="font-mono text-emerald-300"></span></div>
         </div>
-        <div class="cs-card rounded-2xl p-4">
+        <div class="cs-card rounded-3xl p-4 stat-card">
           <div class="section-title">Tick rate / Frames</div>
-          <div class="mt-1">
-            <span class="text-xl font-semibold" id="q-tickrate">64</span>
-            <span class="text-xs text-slate-400">tick</span>
+          <div class="mt-1.5">
+            <span class="text-3xl font-semibold tracking-tighter" id="q-tickrate">64</span>
+            <span class="text-xs text-slate-400 align-baseline ml-0.5">tick</span>
           </div>
-          <div id="q-frames" class="text-xs text-slate-400"></div>
+          <div id="q-frames" class="text-xs text-slate-400 mt-0.5"></div>
         </div>
       </div>
 
       <!-- Tabs -->
-      <div class="border-b border-slate-800 mb-3 flex flex-wrap gap-x-1 text-sm" id="tabs">
+      <div class="border-b border-slate-800 mb-4 flex flex-wrap gap-x-0.5 text-sm bg-slate-900/40 rounded-t-2xl px-1 pt-1" id="tabs">
         <div onclick="switchTab('overview')" class="tab active" data-tab="overview">Overview</div>
         <div onclick="switchTab('players')" class="tab" data-tab="players">Players &amp; Stats</div>
         <div onclick="switchTab('viewmodels')" class="tab" data-tab="viewmodels">Viewmodel Settings</div>
@@ -161,10 +199,10 @@
       </div>
 
       <div id="panel-viewmodels" class="tab-panel hidden">
-        <div class="cs-card rounded-2xl p-4">
-          <div class="section-title mb-2">Player Viewmodel Settings <span class="text-[10px] text-amber-400">(CS2 only)</span></div>
-          <div class="text-xs text-slate-400 mb-2">Extracted via <code>player.ViewmodelOffset()</code>, <code>player.ViewmodelFOV()</code> and <code>player.CrosshairCode()</code> (sampled on round starts + end of demo).</div>
-          <div class="cs-card rounded-xl overflow-hidden border border-slate-800">
+        <div class="cs-card rounded-3xl p-4">
+          <div class="section-title mb-1.5">Player Viewmodel Settings <span class="text-[10px] text-amber-400">(CS2 only)</span></div>
+          <div class="text-xs text-slate-400 mb-2">Extracted via <code>player.ViewmodelOffset()</code>, <code>player.ViewmodelFOV()</code> and <code>player.CrosshairCode()</code> (sampled on round starts + end of demo). Click any crosshair to copy.</div>
+          <div class="cs-card rounded-2xl overflow-hidden border border-slate-800">
             <table class="w-full data-table text-sm">
               <thead class="bg-slate-900 text-left text-xs uppercase text-slate-400">
                 <tr>
@@ -218,52 +256,52 @@
       </div>
 
       <div id="panel-heatmaps" class="tab-panel hidden">
-        <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center justify-between mb-2 px-1">
           <div class="flex items-center gap-x-3">
-            <div class="section-title">Shots Heatmap</div>
-            <div class="flex gap-x-1 text-xs">
-              <label class="flex items-center gap-x-1 cursor-pointer"><input type="checkbox" id="hm-t" checked onchange="drawHeatmap()" class="accent-emerald-500"> T</label>
-              <label class="flex items-center gap-x-1 cursor-pointer"><input type="checkbox" id="hm-ct" checked onchange="drawHeatmap()" class="accent-emerald-500"> CT</label>
-              <label class="flex items-center gap-x-1 cursor-pointer"><input type="checkbox" id="hm-all" checked onchange="drawHeatmap()" class="accent-emerald-500"> All</label>
+            <div class="section-title flex items-center gap-2">Shots Heatmap <span class="text-emerald-400/60 text-[9px] font-normal">(WeaponFire)</span></div>
+            <div class="flex gap-x-1 text-xs bg-slate-900/70 border border-slate-800 rounded-2xl p-0.5">
+              <label class="flex items-center gap-x-1 cursor-pointer px-2 py-0.5 rounded-xl hover:bg-slate-800"><input type="checkbox" id="hm-t" checked onchange="drawHeatmap()" class="accent-emerald-500"> <span class="text-orange-300">T</span></label>
+              <label class="flex items-center gap-x-1 cursor-pointer px-2 py-0.5 rounded-xl hover:bg-slate-800"><input type="checkbox" id="hm-ct" checked onchange="drawHeatmap()" class="accent-emerald-500"> <span class="text-sky-300">CT</span></label>
+              <label class="flex items-center gap-x-1 cursor-pointer px-2 py-0.5 rounded-xl hover:bg-slate-800"><input type="checkbox" id="hm-all" checked onchange="drawHeatmap()" class="accent-emerald-500"> All</label>
             </div>
           </div>
-          <div>
-            <button onclick="downloadCanvas('heatmap-canvas', 'heatmap')" class="text-xs px-3 py-1 border border-slate-700 rounded hover:bg-slate-800">Download PNG</button>
+          <div class="flex items-center gap-1">
+            <button onclick="downloadCanvas('heatmap-canvas', 'heatmap')" class="text-xs px-3 py-1 border border-slate-700 hover:border-slate-600 rounded-2xl hover:bg-slate-800 transition-colors">PNG</button>
           </div>
         </div>
-        <div class="cs-card rounded-2xl p-3">
-          <canvas id="heatmap-canvas" width="800" height="800" class="max-w-full border border-slate-800 rounded bg-[#111827]"></canvas>
+        <div class="cs-card rounded-3xl p-2 overflow-hidden">
+          <canvas id="heatmap-canvas" width="1024" height="1024" class="max-w-full w-full border border-slate-700 rounded-2xl bg-[#0b1120] shadow-inner" style="aspect-ratio: 1 / 1; max-height: 68vh;"></canvas>
         </div>
-        <div class="mt-1 text-[10px] text-slate-500">Dots = WeaponFire positions. Use filters above. Radar background loaded from library assets when available.</div>
+        <div class="mt-1.5 px-1 text-[10px] text-slate-500">Weapon fire positions (world → radar coords via library metadata). Filters + high-res export.</div>
       </div>
 
       <div id="panel-nades" class="tab-panel hidden">
-        <div class="flex flex-wrap gap-2 mb-2 items-end">
-          <div>
-            <div class="section-title mb-1">Grenade Trajectories</div>
+        <div class="flex flex-wrap gap-x-3 gap-y-2 mb-2 items-end px-1">
+          <div class="flex-1">
+            <div class="section-title mb-1 flex items-center gap-2">Grenade Trajectories &amp; Lineups</div>
             <div class="flex gap-1 text-xs flex-wrap" id="nade-type-filters">
-              <!-- populated by js: HE / Smoke / Flash / Molotov / Decoy -->
+              <!-- populated by js -->
             </div>
           </div>
-          <div class="flex-1"></div>
-          <div>
-            <button onclick="downloadCanvas('nade-canvas', 'grenades')" class="text-xs px-3 py-1 border border-slate-700 rounded hover:bg-slate-800">Download PNG</button>
-            <button onclick="clearNadeSelection()" class="text-xs px-3 py-1 border border-slate-700 rounded hover:bg-slate-800">Show All</button>
+          <div class="flex items-center gap-1.5">
+            <button onclick="clearNadeSelection()" class="text-xs px-3 py-1 border border-slate-700 hover:border-slate-500 rounded-2xl hover:bg-slate-800 transition-colors">Reset selection</button>
+            <button onclick="downloadCanvas('nade-canvas', 'grenades')" class="text-xs px-3 py-1 border border-slate-700 hover:border-slate-500 rounded-2xl hover:bg-slate-800 transition-colors">PNG</button>
           </div>
         </div>
         <div class="grid grid-cols-1 lg:grid-cols-5 gap-3">
-          <div class="lg:col-span-3 cs-card rounded-2xl p-3">
-            <canvas id="nade-canvas" width="800" height="800" class="max-w-full border border-slate-800 rounded bg-[#111827]"></canvas>
+          <div class="lg:col-span-3 cs-card rounded-3xl p-2 overflow-hidden">
+            <canvas id="nade-canvas" width="1024" height="1024" class="max-w-full w-full border border-slate-700 rounded-2xl bg-[#0b1120] shadow-inner" style="aspect-ratio: 1 / 1; max-height: 68vh;"></canvas>
           </div>
-          <div class="lg:col-span-2 cs-card rounded-2xl p-2 max-h-[420px] overflow-auto text-xs">
+          <div class="lg:col-span-2 cs-card rounded-3xl p-1 max-h-[460px] overflow-auto text-xs border border-slate-800">
             <table class="w-full">
-              <thead class="text-[10px] text-slate-400 sticky top-0 bg-slate-900">
-                <tr><th class="text-left">Round</th><th>Thrower</th><th>Type</th><th>Points</th></tr>
+              <thead class="text-[10px] text-slate-400 sticky top-0 bg-slate-900/90 backdrop-blur">
+                <tr><th class="text-left pl-2">R</th><th>Thrower</th><th>Type</th><th class="pr-2 text-right">Pts</th></tr>
               </thead>
               <tbody id="nades-tbody" class="divide-y divide-slate-800"></tbody>
             </table>
           </div>
         </div>
+        <div class="mt-1 px-1 text-[10px] text-slate-500">Click rows to highlight individual lineups. Trajectories use exact library Projectile.Trajectory data.</div>
       </div>
 
       <div id="panel-voice" class="tab-panel hidden">
@@ -326,8 +364,8 @@
       const hint = document.getElementById('no-demo-hint');
       const bar = document.getElementById('loaded-bar');
 
-      status.textContent = 'Parsing... (this can take a few seconds for long demos)';
-      status.className = 'text-xs px-3 py-1 text-amber-400';
+      status.innerHTML = '<span class="inline-block w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mr-1.5 align-[-1px]"></span> Parsing demo (can take a few seconds for long matches)...';
+      status.className = 'text-xs px-3 py-1 text-amber-400 flex items-center';
 
       try {
         const res = await fetch('/api/analyze', {
@@ -519,12 +557,19 @@
         const fov = (p.viewmodelFOV || 0).toFixed(1);
         const cross = p.crosshairCode || '';
         const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-800/60';
+        const crossHtml = cross 
+          ? `<button class="copy-crosshair inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 bg-slate-800 hover:bg-emerald-900/60 border border-slate-600 hover:border-emerald-700 rounded text-emerald-300 transition-colors" data-cross="${escapeHtml(cross)}" title="Copy crosshair code">
+               ${escapeHtml(cross)}
+               <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M8 16v-4m4 4v4m4-8v8m4-4v-4m-16 8h16a2 2 0 002-2V6a2 2 0 00-2-2H4a2 2 0 00-2 2v12a2 2 0 002 2" /></svg>
+             </button>`
+          : '<span class="text-slate-500">—</span>';
         tr.innerHTML = `
           <td class="font-medium">${escapeHtml(p.name)}</td>
           <td><span class="px-1.5 py-px rounded text-xs ${p.team==='T'?'bg-orange-900/70 text-orange-300':'bg-sky-900/70 text-sky-300'}">${p.team}</span></td>
-          <td class="font-mono text-xs">${vm.X.toFixed(1)}, ${vm.Y.toFixed(1)}, ${vm.Z.toFixed(1)}</td>
-          <td class="text-right font-mono">${fov}</td>
-          <td class="font-mono text-xs text-slate-300">${escapeHtml(cross) || '<span class="text-slate-500">—</span>'}</td>
+          <td class="font-mono text-xs text-slate-300">${vm.X.toFixed(1)}, ${vm.Y.toFixed(1)}, ${vm.Z.toFixed(1)}</td>
+          <td class="text-right font-mono text-slate-200">${fov}</td>
+          <td>${crossHtml}</td>
         `;
         tb.appendChild(tr);
       });
@@ -533,6 +578,26 @@
         tr.innerHTML = `<td colspan="5" class="text-slate-400 text-xs py-2">No viewmodel data (feature is CS2-only and requires player pawn entities).</td>`;
         tb.appendChild(tr);
       }
+
+      // Wire copy handlers (modern clipboard, with visual feedback)
+      tb.querySelectorAll('.copy-crosshair').forEach(btn => {
+        btn.addEventListener('click', async (ev) => {
+          const code = btn.getAttribute('data-cross') || btn.textContent.trim();
+          try {
+            await navigator.clipboard.writeText(code);
+            const orig = btn.innerHTML;
+            btn.innerHTML = `Copied! <span class="text-emerald-400">✓</span>`;
+            btn.disabled = true;
+            setTimeout(() => {
+              btn.innerHTML = orig;
+              btn.disabled = false;
+            }, 1400);
+          } catch (e) {
+            // fallback
+            prompt('Copy crosshair code:', code);
+          }
+        });
+      });
     }
 
     function renderRounds(rounds) {
@@ -619,8 +684,9 @@
       } else {
         ctx.fillStyle = '#0f172a';
         ctx.fillRect(0, 0, w, h);
-        ctx.fillStyle = '#334155';
-        ctx.fillText(currentAnalysis.mapName || '', 20, 30);
+        ctx.fillStyle = '#64748b';
+        ctx.font = '14px sans-serif';
+        ctx.fillText('No radar image for ' + (currentAnalysis.mapName || 'map') + ' — using approximate scale', 20, 30);
       }
 
       const showT = document.getElementById('hm-t').checked;
@@ -630,7 +696,16 @@
       const shots = currentAnalysis.shots || [];
       const meta = currentAnalysis.mapMeta;
 
-      ctx.fillStyle = 'rgba(163, 163, 172, 0.65)';
+      // Determine scale from loaded radar natural size so that TranslateScale coords land correctly on the drawn (possibly stretched) radar
+      let radarW = 1024, radarH = 1024;
+      if (currentRadarImg) {
+        radarW = currentRadarImg.naturalWidth || 1024;
+        radarH = currentRadarImg.naturalHeight || 1024;
+      }
+      const scaleX = w / radarW;
+      const scaleY = h / radarH;
+
+      ctx.fillStyle = 'rgba(234, 179, 8, 0.75)'; // modern gold-ish for shots
       let drawn = 0;
       for (let i = 0; i < shots.length; i++) {
         const s = shots[i];
@@ -643,27 +718,18 @@
           rx = (s.x - meta.posX) / meta.scale;
           ry = (meta.posY - s.y) / meta.scale;
         } else {
-          // fallback naive scale (demo units roughly -2000..2000 -> 0..800)
-          rx = (s.x + 2500) / 5000 * w;
-          ry = (s.y + 2500) / 5000 * h;
+          // fallback: rough world -> radar space (tuned for typical maps)
+          rx = (s.x + 2200) / 4400 * radarW;
+          ry = (s.y + 2200) / 4400 * radarH;
         }
-        // clamp
-        if (rx < 0 || rx > w || ry < 0 || ry > h) continue;
+        const drawX = rx * scaleX;
+        const drawY = ry * scaleY;
 
         ctx.beginPath();
-        ctx.arc(rx * (w / (meta ? 1024 : 1)) * (meta ? 0.8 : 1) , ry * (h / (meta ? 1024 : 1)) * (meta ? 0.8 : 1), 2.2, 0, Math.PI*2);
-        // better: assume radar img coords roughly match translated values. If radar 1024 we fit.
-        // Simpler approach: use direct proportion if no meta
-        let drawX = rx;
-        let drawY = ry;
-        if (!meta) {
-          drawX = (s.x + 2000) / 4000 * w;
-          drawY = (s.y + 2000) / 4000 * h;
-        }
-        ctx.arc(drawX, drawY, 1.8, 0, Math.PI * 2);
+        ctx.arc(drawX, drawY, 2.0, 0, Math.PI * 2);
         ctx.fill();
         drawn++;
-        if (drawn > 12000) break; // perf
+        if (drawn > 15000) break;
       }
     }
 
@@ -758,41 +824,62 @@
       ctx.lineWidth = 1.6;
       ctx.lineJoin = 'round';
 
+      // Determine scale from loaded radar so trajectories (computed with same TranslateScale as library examples) align
+      let radarW = 1024, radarH = 1024;
+      if (currentRadarImg) {
+        radarW = currentRadarImg.naturalWidth || 1024;
+        radarH = currentRadarImg.naturalHeight || 1024;
+      }
+      const scaleX = w / radarW;
+      const scaleY = h / radarH;
+
       toDraw.forEach(n => {
         if (!n.trajectory || n.trajectory.length < 2) return;
         const isSel = selectedNades.size === 0 || selectedNades.has(n.id);
         ctx.strokeStyle = isSel ? getNadeColor(n.weapon) : '#475569';
-        ctx.globalAlpha = isSel ? 0.95 : 0.35;
+        ctx.globalAlpha = isSel ? 0.92 : 0.28;
+        ctx.lineWidth = isSel ? 1.8 : 1.2;
 
         ctx.beginPath();
         let started = false;
-        n.trajectory.forEach((pt, i) => {
+        n.trajectory.forEach((pt) => {
           let rx, ry;
           if (meta && meta.scale) {
             rx = (pt.x - meta.posX) / meta.scale;
             ry = (meta.posY - pt.y) / meta.scale;
           } else {
-            rx = (pt.x + 2200) / 4400 * w;
-            ry = (pt.y + 2200) / 4400 * h;
+            rx = (pt.x + 2200) / 4400 * radarW;
+            ry = (pt.y + 2200) / 4400 * radarH;
           }
-          if (!started) { ctx.moveTo(rx, ry); started = true; }
-          else { ctx.lineTo(rx, ry); }
+          const drawX = rx * scaleX;
+          const drawY = ry * scaleY;
+          if (!started) { ctx.moveTo(drawX, drawY); started = true; }
+          else { ctx.lineTo(drawX, drawY); }
         });
         ctx.stroke();
       });
       ctx.globalAlpha = 1.0;
+      ctx.lineWidth = 1.6;
 
-      // also draw start markers for selected
-      ctx.fillStyle = '#eab308';
+      // start markers (yellow) for selected
+      ctx.fillStyle = '#fde047';
       toDraw.forEach(n => {
         if (selectedNades.size > 0 && !selectedNades.has(n.id)) return;
         if (!n.trajectory || !n.trajectory.length) return;
         const pt = n.trajectory[0];
         let rx, ry;
         if (meta && meta.scale) {
-          rx = (pt.x - meta.posX) / meta.scale; ry = (meta.posY - pt.y) / meta.scale;
-        } else { rx = (pt.x + 2200)/4400*w; ry = (pt.y+2200)/4400*h; }
-        ctx.beginPath(); ctx.arc(rx, ry, 3, 0, Math.PI*2); ctx.fill();
+          rx = (pt.x - meta.posX) / meta.scale;
+          ry = (meta.posY - pt.y) / meta.scale;
+        } else {
+          rx = (pt.x + 2200) / 4400 * radarW;
+          ry = (pt.y + 2200) / 4400 * radarH;
+        }
+        const drawX = rx * scaleX;
+        const drawY = ry * scaleY;
+        ctx.beginPath();
+        ctx.arc(drawX, drawY, 3.5, 0, Math.PI*2);
+        ctx.fill();
       });
     }
 
