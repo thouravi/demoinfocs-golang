@@ -701,7 +701,7 @@
           small.className = 'cursor-pointer rounded border border-slate-700 bg-[#0b1120] hover:border-emerald-600 transition-colors flex-shrink-0';
           small.title = crossCode ? ('Click for large preview of ' + crossCode) : 'Click for crosshair preview details';
           if (ch) {
-            drawCrosshair(small, ch, 1.2); // zoom tuned so crosshair fills the 28px icon well (accurate renderer already does *2 etc internally)
+            drawCrosshair(small, ch, 2.0); // zoom so the accurate ref crosshair fills the small 28px icon nicely
           } else {
             // minimal placeholder
             const c2 = small.getContext('2d');
@@ -757,7 +757,9 @@
 
     // Accurate CS2 crosshair renderer ported from production-accurate implementation
     // (girlglock/cs2-crosshair static renderer + alignment/rounding tricks to match in-game rasterization).
-    // Draws "as the game would" for the given decoded ch values onto the target canvas.
+    // Accurate CS2 crosshair renderer, ported from girlglock/cs2-crosshair/services/crosshairRenderer.js
+    // (the version used to generate their PNG previews - the reference for "in-game accurate").
+    // Zoom scales the pixel computations for our different canvas sizes (small icon vs large modal).
     function drawCrosshair(canvas, ch, previewZoom) {
       if (!canvas || !ch) return;
       const ctx = canvas.getContext('2d');
@@ -781,72 +783,84 @@
       const cy = h / 2;
       const zoom = (previewZoom || 1);
 
-      // Only render classic styles (2/4) the same way as accurate tools; others fall back to similar static.
-      const style = ch.style || 4;
-      if (style !== 2 && style !== 4 && style !== 0 && style !== 1) {
-        // simple fallback for legacy etc.
-        ctx.fillStyle = `rgba(${ch.red||255},${ch.green||255},${ch.blue||255}, ${(ch.alpha||200)/255})`;
-        ctx.fillRect(cx-1, cy-1, 3, 3);
+      // settings from our decoded ch (matches their parseCode)
+      const settings = {
+        cl_crosshairsize: ch.length || 0,
+        cl_crosshairgap: ch.gap || 0,
+        cl_crosshairthickness: ch.thickness || 0,
+        cl_crosshair_outlinethickness: ch.outline || 0,
+        cl_crosshair_drawoutline: !!ch.outlineEnabled,
+        cl_crosshairdot: !!ch.centerDotEnabled,
+        cl_crosshair_t: !!ch.tStyleEnabled,
+        cl_crosshairalpha: ch.alpha || 200,
+        cl_crosshairusealpha: ch.alphaEnabled !== false,
+        cl_crosshaircolor_r: ch.red || 0,
+        cl_crosshaircolor_g: ch.green || 0,
+        cl_crosshaircolor_b: ch.blue || 0,
+        cl_crosshaircolor: ch.color || 5,
+        cl_crosshairstyle: ch.style || 4
+      };
+
+      const center = { x: cx, y: cy };
+      const [r, g, b] = getColor(settings);
+      const alpha = settings.cl_crosshairusealpha ? settings.cl_crosshairalpha / 255 : 1;
+      const style = parseInt(settings.cl_crosshairstyle) || 4;
+
+      if (style < 2) {
+        if (settings.cl_crosshairdot) {
+          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+          const dw = Math.max(1, Math.floor(settings.cl_crosshairthickness * 2 * zoom));
+          ctx.fillRect(cx - dw/2, cy - dw/2, dw, dw);
+        }
         return;
       }
 
-      const size = ch.length || 0;
-      const gapVal = ch.gap || 0;
-      const thickVal = ch.thickness || 0;
-      const outlineVal = ch.outline || 0;
-      const hasOutline = !!ch.outlineEnabled;
-      const hasDot = !!ch.centerDotEnabled;
-      const hasT = !!ch.tStyleEnabled;
-      const useAlpha = (ch.alphaEnabled !== false);
-      const alpha = useAlpha ? ((ch.alpha || 200) / 255) : 1;
-      const r = ch.red || 0, g = ch.green || 0, b = ch.blue || 0;
+      const crosshairLength = Math.floor(settings.cl_crosshairsize * 2 * zoom);
+      const crosshairWidth = Math.max(1, Math.floor(settings.cl_crosshairthickness * 2 * zoom));
+      const baseGap = Math.ceil(parseFloat(settings.cl_crosshairgap) + 4);
+      const crosshairGap = baseGap * zoom;
 
-      // Core calculations (from accurate renderer, scaled by zoom for target canvas size)
-      let crosshairLength = Math.floor(size * 2 * zoom);
-      let crosshairWidth = Math.max(1, Math.floor(thickVal * 2 * zoom));
-      let crosshairGap = Math.ceil((gapVal + 4) * zoom);
-      let adjustedLength = (size > 2 ? crosshairLength + 1 : crosshairLength);
-      const outlineThickness = hasOutline ? outlineVal * zoom : 0;  // float ok for rects
+      const adjustedLength = (parseInt(settings.cl_crosshairsize) > 2 ? crosshairLength + 1 : crosshairLength);
+
+      const outlineThickness = settings.cl_crosshair_drawoutline ? settings.cl_crosshair_outlinethickness * zoom : 0;
       const crosshairColor = `rgba(${r}, ${g}, ${b}, ${alpha})`;
 
       let translate = (crosshairWidth % 2) / 2;
       ctx.save();
       ctx.translate(translate, translate);
 
-      // OUTLINES (black) - exact positioning/rounding from accurate source
-      if (hasOutline && outlineThickness > 0) {
+      if (settings.cl_crosshair_drawoutline && outlineThickness > 0) {
         ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
 
         const strokeTranslate = (crosshairWidth / 2) - Math.floor(crosshairWidth / 2);
         ctx.translate(-translate, -translate);
         ctx.translate(strokeTranslate, strokeTranslate);
 
-        // Right (horizontal arm)
         ctx.fillRect(
-          (cx + ((crosshairWidth / 2) + crosshairGap)) - outlineThickness,
-          (cy - (crosshairWidth / 2)) - outlineThickness,
+          (center.x + ((crosshairWidth / 2) + crosshairGap)) - outlineThickness,
+          (center.y - (crosshairWidth / 2)) - outlineThickness,
           adjustedLength + (outlineThickness * 2),
           crosshairWidth + (outlineThickness * 2)
         );
-        // Left
+
         ctx.fillRect(
-          (cx - ((adjustedLength + (crosshairWidth / 2)) + crosshairGap)) - outlineThickness,
-          (cy - (crosshairWidth / 2)) - outlineThickness,
+          (center.x - ((adjustedLength + (crosshairWidth / 2)) + crosshairGap)) - outlineThickness,
+          (center.y - (crosshairWidth / 2)) - outlineThickness,
           adjustedLength + (outlineThickness * 2),
           crosshairWidth + (outlineThickness * 2)
         );
-        // Bottom (vertical arm)
+
         ctx.fillRect(
-          (cx - (crosshairWidth / 2)) - outlineThickness,
-          (cy + ((crosshairWidth / 2) + crosshairGap)) - outlineThickness,
+          (center.x - (crosshairWidth / 2)) - outlineThickness,
+          (center.y + ((crosshairWidth / 2) + crosshairGap)) - outlineThickness,
           crosshairWidth + (outlineThickness * 2),
           adjustedLength + (outlineThickness * 2)
         );
-        // Top (if not T-style)
-        if (!hasT) {
+
+        if (!settings.cl_crosshair_t) {
           ctx.fillRect(
-            (cx - (crosshairWidth / 2)) - outlineThickness,
-            (cy - ((adjustedLength + (crosshairWidth / 2) + crosshairGap))) - outlineThickness,
+            (center.x - (crosshairWidth / 2)) - outlineThickness,
+            (center.y - ((adjustedLength + (crosshairWidth / 2) + crosshairGap))) - outlineThickness,
             crosshairWidth + (outlineThickness * 2),
             adjustedLength + (outlineThickness * 2)
           );
@@ -856,54 +870,52 @@
         ctx.translate(translate, translate);
       }
 
-      // Main colored lines
       ctx.fillStyle = crosshairColor;
 
-      // Right
       ctx.fillRect(
-        cx + ((crosshairWidth / 2) + crosshairGap),
-        cy - (crosshairWidth / 2),
+        center.x + ((crosshairWidth / 2) + crosshairGap),
+        center.y - (crosshairWidth / 2),
         adjustedLength,
         crosshairWidth
       );
-      // Left
+
       ctx.fillRect(
-        cx - ((adjustedLength + (crosshairWidth / 2)) + crosshairGap),
-        cy - (crosshairWidth / 2),
+        center.x - ((adjustedLength + (crosshairWidth / 2)) + crosshairGap),
+        center.y - (crosshairWidth / 2),
         adjustedLength,
         crosshairWidth
       );
-      // Bottom
+
       ctx.fillRect(
-        cx - (crosshairWidth / 2),
-        cy + ((crosshairWidth / 2) + crosshairGap),
+        center.x - (crosshairWidth / 2),
+        center.y + ((crosshairWidth / 2) + crosshairGap),
         crosshairWidth,
         adjustedLength
       );
-      // Top
-      if (!hasT) {
+
+      if (!settings.cl_crosshair_t) {
         ctx.fillRect(
-          cx - (crosshairWidth / 2),
-          cy - ((adjustedLength + (crosshairWidth / 2)) + crosshairGap),
+          center.x - (crosshairWidth / 2),
+          center.y - ((adjustedLength + (crosshairWidth / 2)) + crosshairGap),
           crosshairWidth,
           adjustedLength
         );
       }
 
-      // Center dot
-      if (hasDot) {
+      if (settings.cl_crosshairdot) {
         const dotWidth = crosshairWidth;
         const dotHeight = crosshairWidth;
 
-        if (hasOutline && outlineThickness > 0) {
+        if (settings.cl_crosshair_drawoutline && outlineThickness > 0) {
           ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+
           const strokeTranslate = (crosshairWidth / 2) - Math.floor(crosshairWidth / 2);
           ctx.translate(-translate, -translate);
           ctx.translate(strokeTranslate, strokeTranslate);
 
           ctx.fillRect(
-            (cx - (crosshairWidth / 2)) - outlineThickness,
-            (cy - (crosshairWidth / 2)) - outlineThickness,
+            (center.x - (crosshairWidth / 2)) - outlineThickness,
+            (center.y - (crosshairWidth / 2)) - outlineThickness,
             crosshairWidth + (outlineThickness * 2),
             crosshairWidth + (outlineThickness * 2)
           );
@@ -914,14 +926,30 @@
 
         ctx.fillStyle = crosshairColor;
         ctx.fillRect(
-          cx - (dotWidth / 2),
-          cy - (dotHeight / 2),
+          center.x - (dotWidth / 2),
+          center.y - (dotHeight / 2),
           dotWidth,
           dotHeight
         );
       }
 
+      ctx.translate(-translate, -translate);
       ctx.restore();
+    }
+
+    function getColor(settings) {
+      const colorIndex = settings.cl_crosshaircolor;
+      if (colorIndex === 5) {
+        return [settings.cl_crosshaircolor_r, settings.cl_crosshaircolor_g, settings.cl_crosshaircolor_b];
+      }
+      const presetColors = {
+        0: [255, 0, 0],
+        1: [0, 255, 0],
+        2: [255, 255, 0],
+        3: [0, 0, 255],
+        4: [0, 255, 255]
+      };
+      return presetColors[colorIndex] || [0, 255, 0];
     }
 
     let currentModalCross = null;
@@ -936,7 +964,7 @@
 
       // draw large
       if (ch) {
-        drawCrosshair(bigC, ch, 3.5); // larger detailed view in modal
+        drawCrosshair(bigC, ch, 4.0); // larger detailed view in modal
       } else {
         const c2 = bigC.getContext('2d');
         c2.fillStyle = '#111827'; c2.fillRect(0,0,bigC.width,bigC.height);
