@@ -151,11 +151,17 @@ type PlayerStat struct {
 
 // RoundInfo
 type RoundInfo struct {
-	Number  int    `json:"number"`
-	Winner  string `json:"winner"`
-	Reason  string `json:"reason"`
-	TScore  int    `json:"tScore"`
-	CTScore int    `json:"ctScore"`
+	Number   int     `json:"number"`
+	Winner   string  `json:"winner"`
+	Reason   string  `json:"reason"`
+	TScore   int     `json:"tScore"`
+	CTScore  int     `json:"ctScore"`
+	Duration float64 `json:"duration"` // seconds
+	TBuy     string  `json:"tBuy"`
+	CTBuy    string  `json:"ctBuy"`
+	Plant    string  `json:"plant,omitempty"`
+	Defuse   string  `json:"defuse,omitempty"`
+	Highlights string `json:"highlights,omitempty"`
 }
 
 // KillInfo
@@ -265,6 +271,15 @@ type parseState struct {
 
 	// current
 	currentRound int
+	currentRoundStartTick int
+
+	// buy classification for current round (captured at freezetime end)
+	currentTBuy  string
+	currentCTBuy string
+
+	// bomb actions for current round
+	currentBombPlant string
+	currentBombDefuse string
 
 	// for advanced per-player metrics (accuracy, time-to-damage etc)
 	// for 3K/4K/5K tracking
@@ -324,8 +339,13 @@ func newParseState(demoName string) *parseState {
 		players:           make(map[uint64]*PlayerStat),
 		activeNades:       make(map[int64]*nadeBuilder),
 		voicePackets:      make(map[uint64][]voicePacket),
-		currentRound:      0,
-		currentRoundKills: make(map[uint64]int),
+		currentRound:          0,
+		currentRoundStartTick: 0,
+		currentTBuy:           "?",
+		currentCTBuy:          "?",
+		currentBombPlant:      "",
+		currentBombDefuse:     "",
+		currentRoundKills:     make(map[uint64]int),
 		infernos:          []*common.Inferno{},
 		bombEvents:        []BombEvent{},
 		tScore:            0,
@@ -431,6 +451,22 @@ func roundEndReasonToStr(r events.RoundEndReason) string {
 	}
 }
 
+func classifyBuy(avgEquip float64) string {
+	if avgEquip <= 0 {
+		return "?"
+	}
+	if avgEquip < 2000 {
+		return "Eco"
+	}
+	if avgEquip < 4000 {
+		return "Pistol"
+	}
+	if avgEquip < 7500 {
+		return "Force Buy"
+	}
+	return "Full Buy"
+}
+
 // isGunWeapon returns true for weapons that contribute to shooting accuracy (pistols, smgs, heavies, rifles).
 // Uses the library's EquipmentClass.
 func isGunWeapon(t common.EquipmentType) bool {
@@ -481,8 +517,14 @@ func parseDemo(demoPath string) (*Analysis, error) {
 	// Round tracking
 	p.RegisterEventHandler(func(e events.RoundStart) {
 		st.currentRound++
-		// initial scores from game state; also sync our tracked scores (used for accurate round scores in table)
 		gs := p.GameState()
+		st.currentRoundStartTick = gs.IngameTick()
+		st.currentTBuy = "?"
+		st.currentCTBuy = "?"
+		st.currentBombPlant = ""
+		st.currentBombDefuse = ""
+
+		// initial scores from game state; also sync our tracked scores (used for accurate round scores in table)
 		st.tScore = gs.TeamTerrorists().Score()
 		st.ctScore = gs.TeamCounterTerrorists().Score()
 		st.lastTScore = st.tScore
@@ -496,6 +538,38 @@ func parseDemo(demoPath string) (*Analysis, error) {
 			if pl != nil && !isGOTV(pl) {
 				st.ensurePlayer(pl) // will pull ViewmodelOffset/FOV/CrosshairCode via the player methods
 			}
+		}
+	})
+
+	// Capture economy / buy type at the end of freeze time (after buys are placed)
+	p.RegisterEventHandler(func(e events.RoundFreezetimeEnd) {
+		gs := p.GameState()
+		tVal := 0.0
+		tCnt := 0
+		ctVal := 0.0
+		ctCnt := 0
+		for _, pl := range gs.Participants().Playing() {
+			if pl == nil || isGOTV(pl) {
+				continue
+			}
+			val := float64(pl.EquipmentValueFreezeTimeEnd())
+			if pl.Team == common.TeamTerrorists {
+				tVal += val
+				tCnt++
+			} else if pl.Team == common.TeamCounterTerrorists {
+				ctVal += val
+				ctCnt++
+			}
+		}
+		if tCnt > 0 {
+			st.currentTBuy = classifyBuy(tVal / float64(tCnt))
+		} else {
+			st.currentTBuy = "?"
+		}
+		if ctCnt > 0 {
+			st.currentCTBuy = classifyBuy(ctVal / float64(ctCnt))
+		} else {
+			st.currentCTBuy = "?"
 		}
 	})
 
@@ -523,12 +597,42 @@ func parseDemo(demoPath string) (*Analysis, error) {
 		// keep tracked in sync with what we recorded for this round end
 		st.tScore = tScore
 		st.ctScore = ctScore
+
+		dur := 0.0
+		if st.currentRoundStartTick > 0 {
+			durTicks := gs.IngameTick() - st.currentRoundStartTick
+			if p.TickRate() > 0 {
+				dur = float64(durTicks) / p.TickRate()
+			}
+		}
+
+		// highlights from multi-kills this round (4k/5k)
+		highlights := ""
+		for sid, kcount := range st.currentRoundKills {
+			if kcount >= 4 {
+				if ps, ok := st.players[sid]; ok {
+					if kcount == 5 {
+						highlights = "Ace by " + ps.Name
+					} else {
+						highlights = fmt.Sprintf("%dK by %s", kcount, ps.Name)
+					}
+					break // show one primary
+				}
+			}
+		}
+
 		st.rounds = append(st.rounds, RoundInfo{
-			Number:  st.currentRound,
-			Winner:  winner,
-			Reason:  roundEndReasonToStr(e.Reason),
-			TScore:  tScore,
-			CTScore: ctScore,
+			Number:     st.currentRound,
+			Winner:     winner,
+			Reason:     roundEndReasonToStr(e.Reason),
+			TScore:     tScore,
+			CTScore:    ctScore,
+			Duration:   dur,
+			TBuy:       st.currentTBuy,
+			CTBuy:      st.currentCTBuy,
+			Plant:      st.currentBombPlant,
+			Defuse:     st.currentBombDefuse,
+			Highlights: highlights,
 		})
 
 		// tally 3K/4K/5K (aces) based on kills in this round
@@ -769,6 +873,9 @@ func parseDemo(demoPath string) (*Analysis, error) {
 				Player:   e.Player.Name,
 				Type:     "plant",
 			})
+			if st.currentRound > 0 {
+				st.currentBombPlant = e.Player.Name
+			}
 		}
 	})
 	p.RegisterEventHandler(func(e events.BombDefused) {
@@ -781,6 +888,9 @@ func parseDemo(demoPath string) (*Analysis, error) {
 				Player:   e.Player.Name,
 				Type:     "defuse",
 			})
+			if st.currentRound > 0 {
+				st.currentBombDefuse = e.Player.Name
+			}
 		}
 	})
 

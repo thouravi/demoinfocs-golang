@@ -237,14 +237,14 @@
       </div>
 
       <div id="panel-rounds" class="tab-panel hidden">
-        <div class="cs-card rounded-2xl overflow-hidden">
-          <table class="w-full data-table text-sm">
-            <thead class="bg-slate-900 text-xs text-slate-400">
-              <tr><th class="w-12">#</th><th>Winner</th><th>Reason</th><th>Score (T-CT)</th></tr>
-            </thead>
-            <tbody id="rounds-tbody"></tbody>
-          </table>
+        <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs mb-2 px-1 text-slate-400" id="rounds-summary">
+          <!-- populated in renderRounds -->
         </div>
+        <div class="cs-card rounded-2xl p-2 max-h-[520px] overflow-auto" id="rounds-container">
+          <!-- cards populated by renderRounds -->
+          <div id="rounds-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 text-sm"></div>
+        </div>
+        <div class="mt-1.5 px-1 text-[10px] text-slate-500">Click any round card to filter the Kills tab to that round (and switch tabs). Data enriched with economy, bomb actions, duration, and multi-kill highlights.</div>
       </div>
 
       <div id="panel-chat" class="tab-panel hidden">
@@ -1050,18 +1050,81 @@ cl_crosshair_recoil "${b(ch.followRecoil)}"
     }
 
     function renderRounds(rounds) {
-      const tb = document.getElementById('rounds-tbody');
-      tb.innerHTML = '';
+      const grid = document.getElementById('rounds-grid');
+      const summary = document.getElementById('rounds-summary');
+      if (!grid || !summary) return;
+      grid.innerHTML = '';
+      summary.innerHTML = '';
+
+      if (!rounds || rounds.length === 0) {
+        grid.innerHTML = '<div class="text-slate-400 text-xs col-span-full p-2">No round data recorded.</div>';
+        return;
+      }
+
+      let tWins = 0, ctWins = 0, totalDur = 0, plants = 0, defuses = 0;
       rounds.forEach(r => {
-        const tr = document.createElement('tr');
-        const w = r.winner === 'T' ? 'text-orange-400' : (r.winner==='CT' ? 'text-sky-400' : '');
-        tr.innerHTML = `
-          <td class="font-mono text-slate-400">${r.number}</td>
-          <td class="${w} font-medium">${r.winner}</td>
-          <td class="text-slate-400">${r.reason}</td>
-          <td class="font-mono">${r.tScore} : ${r.ctScore}</td>
+        if (r.winner === 'T') tWins++;
+        else if (r.winner === 'CT') ctWins++;
+        if (r.duration > 0) totalDur += r.duration;
+        if (r.plant) plants++;
+        if (r.defuse) defuses++;
+      });
+      const avgDur = rounds.length > 0 ? (totalDur / rounds.length) : 0;
+
+      summary.innerHTML = `
+        <span>Rounds: <b class="text-slate-200">${rounds.length}</b></span>
+        <span>T wins: <b class="text-orange-400">${tWins}</b></span>
+        <span>CT wins: <b class="text-sky-400">${ctWins}</b></span>
+        <span>Avg length: <b class="text-slate-200">${avgDur.toFixed(0)}</b>s</span>
+        <span>Plants: <b class="text-red-400">${plants}</b></span>
+        <span>Defuses: <b class="text-emerald-400">${defuses}</b></span>
+      `;
+
+      rounds.forEach(r => {
+        const card = document.createElement('div');
+        card.className = `rounded-2xl border p-2 cursor-pointer transition-all hover:scale-[1.01] ${r.winner === 'T' ? 'bg-orange-950/30 border-orange-900/60 hover:border-orange-700' : (r.winner === 'CT' ? 'bg-sky-950/30 border-sky-900/60 hover:border-sky-700' : 'bg-slate-900 border-slate-800')}`;
+
+        const durStr = r.duration > 0 ? r.duration.toFixed(0) + 's' : '—';
+        const buyStr = (r.tBuy || '?') + ' / ' + (r.ctBuy || '?');
+        let bombStr = '';
+        if (r.plant) bombStr += `<span class="text-red-400">💣 ${escapeHtml(r.plant)}</span>`;
+        if (r.defuse) {
+          if (bombStr) bombStr += ' ';
+          bombStr += `<span class="text-emerald-400">🔓 ${escapeHtml(r.defuse)}</span>`;
+        }
+        if (!bombStr) bombStr = '<span class="text-slate-500">—</span>';
+
+        const hl = r.highlights ? `<div class="text-[10px] mt-0.5 text-amber-400">⭐ ${escapeHtml(r.highlights)}</div>` : '';
+
+        card.innerHTML = `
+          <div class="flex items-center justify-between mb-1">
+            <div class="font-mono text-xs text-slate-400">#${r.number} <span class="text-slate-500">·</span> ${durStr}</div>
+            <div class="text-[10px] px-1.5 py-px rounded font-medium ${r.winner==='T'?'bg-orange-900/70 text-orange-300':(r.winner==='CT'?'bg-sky-900/70 text-sky-300':'bg-slate-800 text-slate-300')}">${r.winner}</div>
+          </div>
+          <div class="text-xs mb-1">
+            <span class="font-medium">${escapeHtml(r.reason)}</span>
+            <span class="font-mono text-slate-400 ml-1">${r.tScore}:${r.ctScore}</span>
+          </div>
+          <div class="text-[10px] flex items-center gap-1 text-slate-300">
+            <span class="shrink-0">Buy:</span> <span class="font-mono">${escapeHtml(buyStr)}</span>
+          </div>
+          <div class="text-[10px] mt-0.5 flex items-center gap-1 text-slate-300">
+            <span class="shrink-0">Bomb:</span> ${bombStr}
+          </div>
+          ${hl}
         `;
-        tb.appendChild(tr);
+
+        card.onclick = () => {
+          const sel = document.getElementById('kill-round-filter');
+          if (sel) {
+            sel.value = String(r.number);
+            switchTab('kills');
+            if (typeof filterKills === 'function') filterKills();
+          }
+        };
+        card.title = `Click to show kills from round ${r.number} only`;
+
+        grid.appendChild(card);
       });
     }
 
