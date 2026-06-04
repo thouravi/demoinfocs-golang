@@ -37,9 +37,18 @@ func main() {
 			// Get viewmodel settings
 			offset := player.ViewmodelOffset()
 			fov := player.ViewmodelFOV()
+			code := player.CrosshairCode()
+			ch := player.Crosshair()
 
 			fmt.Printf("%s: Viewmodel Offset=(%.1f, %.1f, %.1f), FOV=%.1f\n",
 				player.Name, offset.X, offset.Y, offset.Z, fov)
+			if code != "" {
+				fmt.Printf("  Crosshair: %s\n", code)
+				if ch != nil {
+					fmt.Printf("    decoded: len=%.1f gap=%.1f thick=%.1f style=%d color=%d,%d,%d\n",
+						ch.Length, ch.Gap, ch.Thickness, ch.Style, ch.Red, ch.Green, ch.Blue)
+				}
+			}
 		}
 		fmt.Println() // Empty line for readability
 	})

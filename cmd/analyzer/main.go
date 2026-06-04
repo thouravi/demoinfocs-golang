@@ -99,41 +99,41 @@ func handleListDemos(w http.ResponseWriter, r *http.Request) {
 
 // Analysis is the full extracted data returned to frontend.
 type Analysis struct {
-	DemoName     string        `json:"demoName"`
-	MapName      string        `json:"mapName"`
-	Duration     float64       `json:"duration"` // seconds
-	TickRate     float64       `json:"tickRate"`
+	DemoName      string        `json:"demoName"`
+	MapName       string        `json:"mapName"`
+	Duration      float64       `json:"duration"` // seconds
+	TickRate      float64       `json:"tickRate"`
 	PlaybackTicks int           `json:"playbackTicks"`
-	Players      []PlayerStat  `json:"players"`
-	Rounds       []RoundInfo   `json:"rounds"`
-	Kills        []KillInfo    `json:"kills"`
-	Chats        []ChatInfo    `json:"chats"`
-	Shots        []ShotInfo    `json:"shots"` // world coords for client heatmap
-	Nades        []NadeInfo    `json:"nades"`
-	Infernos     []InfernoInfo `json:"infernos"`
-	BombEvents   []BombEvent   `json:"bombEvents"`
-	Voice        VoiceInfo     `json:"voice"`
-	MapMeta      *MapMeta      `json:"mapMeta,omitempty"`
-	Error        string        `json:"error,omitempty"`
+	Players       []PlayerStat  `json:"players"`
+	Rounds        []RoundInfo   `json:"rounds"`
+	Kills         []KillInfo    `json:"kills"`
+	Chats         []ChatInfo    `json:"chats"`
+	Shots         []ShotInfo    `json:"shots"` // world coords for client heatmap
+	Nades         []NadeInfo    `json:"nades"`
+	Infernos      []InfernoInfo `json:"infernos"`
+	BombEvents    []BombEvent   `json:"bombEvents"`
+	Voice         VoiceInfo     `json:"voice"`
+	MapMeta       *MapMeta      `json:"mapMeta,omitempty"`
+	Error         string        `json:"error,omitempty"`
 }
 
 // PlayerStat aggregated stats
 type PlayerStat struct {
-	Name        string  `json:"name"`
-	SteamID64   uint64  `json:"steamId64,omitempty"`
-	Team        string  `json:"team"`
-	Kills       int     `json:"kills"`
-	Deaths      int     `json:"deaths"`
-	Assists     int     `json:"assists"`
-	Damage      int     `json:"damage"`
-	Headshots   int     `json:"headshots"`
-	ADR         float64 `json:"adr,omitempty"`
+	Name      string  `json:"name"`
+	SteamID64 uint64  `json:"steamId64,omitempty"`
+	Team      string  `json:"team"`
+	Kills     int     `json:"kills"`
+	Deaths    int     `json:"deaths"`
+	Assists   int     `json:"assists"`
+	Damage    int     `json:"damage"`
+	Headshots int     `json:"headshots"`
+	ADR       float64 `json:"adr,omitempty"`
 
 	// new advanced metrics (computed from WeaponFire + PlayerHurt + Kill events + round timing)
-	Shots           int     `json:"shots"`
-	Hits            int     `json:"hits"`
-	HSPercent       float64 `json:"hsPercent"`
-	Accuracy        float64 `json:"accuracy"`
+	Shots     int     `json:"shots"`
+	Hits      int     `json:"hits"`
+	HSPercent float64 `json:"hsPercent"`
+	Accuracy  float64 `json:"accuracy"`
 
 	// multi-kill stats (3K/4K/5K aces) and utility damage, tracked via per-round kill counts + PlayerHurt weapon class
 	ThreeKs       int `json:"threeKs"`
@@ -143,9 +143,10 @@ type PlayerStat struct {
 	FlashAssists  int `json:"flashAssists"`
 
 	// Viewmodel settings (CS2 only, supported via common.Player methods)
-	ViewmodelOffset r3.Vector `json:"viewmodelOffset"`
-	ViewmodelFOV    float32   `json:"viewmodelFOV"`
-	CrosshairCode   string    `json:"crosshairCode,omitempty"`
+	ViewmodelOffset r3.Vector         `json:"viewmodelOffset"`
+	ViewmodelFOV    float32           `json:"viewmodelFOV"`
+	CrosshairCode   string            `json:"crosshairCode,omitempty"`
+	Crosshair       *common.Crosshair `json:"crosshair,omitempty"`
 }
 
 // RoundInfo
@@ -159,14 +160,14 @@ type RoundInfo struct {
 
 // KillInfo
 type KillInfo struct {
-	Tick       int    `json:"tick"`
-	Round      int    `json:"round"`
-	Killer     string `json:"killer"`
-	Victim     string `json:"victim"`
-	Weapon     string `json:"weapon"`
-	Headshot   bool   `json:"headshot"`
-	Wallbang   bool   `json:"wallbang"`
-	Assister   string `json:"assister,omitempty"`
+	Tick     int    `json:"tick"`
+	Round    int    `json:"round"`
+	Killer   string `json:"killer"`
+	Victim   string `json:"victim"`
+	Weapon   string `json:"weapon"`
+	Headshot bool   `json:"headshot"`
+	Wallbang bool   `json:"wallbang"`
+	Assister string `json:"assister,omitempty"`
 }
 
 // ChatInfo
@@ -196,15 +197,15 @@ type Pos struct {
 
 // NadeInfo
 type NadeInfo struct {
-	ID         int64  `json:"id"`
-	Tick       int    `json:"tick"`
-	Round      int    `json:"round"`
-	Thrower    string `json:"thrower"`
-	Team       string `json:"team"`
-	Weapon     string `json:"weapon"`
-	StartX     float64 `json:"startX"`
-	StartY     float64 `json:"startY"`
-	Trajectory []Pos  `json:"trajectory"`
+	ID           int64   `json:"id"`
+	Tick         int     `json:"tick"`
+	Round        int     `json:"round"`
+	Thrower      string  `json:"thrower"`
+	Team         string  `json:"team"`
+	Weapon       string  `json:"weapon"`
+	StartX       float64 `json:"startX"`
+	StartY       float64 `json:"startY"`
+	Trajectory   []Pos   `json:"trajectory"`
 	ThrowerPosX  float64 `json:"throwerPosX"`
 	ThrowerPosY  float64 `json:"throwerPosY"`
 	ThrowerPosZ  float64 `json:"throwerPosZ"`
@@ -288,7 +289,7 @@ type parseState struct {
 	lastTScore  int
 	lastCTScore int
 
-	tScore int
+	tScore  int
 	ctScore int
 
 	// map meta
@@ -303,26 +304,26 @@ type voicePacket struct {
 }
 
 type nadeBuilder struct {
-	id        int64
-	throwTick int
-	round     int
-	thrower   string
-	team      string
-	weapon    string
-	startX    float64
-	startY    float64
-	trajectory []r3.Vector
-	throwerPos r3.Vector
+	id           int64
+	throwTick    int
+	round        int
+	thrower      string
+	team         string
+	weapon       string
+	startX       float64
+	startY       float64
+	trajectory   []r3.Vector
+	throwerPos   r3.Vector
 	throwerPitch float32
 	throwerYaw   float32
 }
 
 func newParseState(demoName string) *parseState {
 	return &parseState{
-		demoName:     demoName,
-		players:      make(map[uint64]*PlayerStat),
-		activeNades:  make(map[int64]*nadeBuilder),
-		voicePackets: make(map[uint64][]voicePacket),
+		demoName:          demoName,
+		players:           make(map[uint64]*PlayerStat),
+		activeNades:       make(map[int64]*nadeBuilder),
+		voicePackets:      make(map[uint64][]voicePacket),
 		currentRound:      0,
 		currentRoundKills: make(map[uint64]int),
 		infernos:          []*common.Inferno{},
@@ -378,6 +379,9 @@ func (st *parseState) ensurePlayer(p *common.Player) *PlayerStat {
 		ps.ViewmodelOffset = p.ViewmodelOffset()
 		ps.ViewmodelFOV = p.ViewmodelFOV()
 		ps.CrosshairCode = p.CrosshairCode()
+		if ch := p.Crosshair(); ch != nil {
+			ps.Crosshair = ch
+		}
 	}
 
 	return ps
@@ -690,16 +694,16 @@ func parseDemo(demoPath string) (*Analysis, error) {
 		}
 		yaw := thrower.ViewDirectionX()
 		nb := &nadeBuilder{
-			id:        id,
-			throwTick: p.GameState().IngameTick(),
-			round:     st.currentRound,
-			thrower:   thrower.Name,
-			team:      teamToStr(thrower.Team),
-			weapon:    weaponToStr(e.Projectile.WeaponInstance.Type),
-			startX:    e.Projectile.Position().X,
-			startY:    e.Projectile.Position().Y,
-			trajectory: []r3.Vector{e.Projectile.Position()},
-			throwerPos: pos,
+			id:           id,
+			throwTick:    p.GameState().IngameTick(),
+			round:        st.currentRound,
+			thrower:      thrower.Name,
+			team:         teamToStr(thrower.Team),
+			weapon:       weaponToStr(e.Projectile.WeaponInstance.Type),
+			startX:       e.Projectile.Position().X,
+			startY:       e.Projectile.Position().Y,
+			trajectory:   []r3.Vector{e.Projectile.Position()},
+			throwerPos:   pos,
 			throwerPitch: pitch,
 			throwerYaw:   yaw,
 		}
@@ -726,18 +730,18 @@ func parseDemo(demoPath string) (*Analysis, error) {
 			traj[i] = Pos{X: v.X, Y: v.Y, Z: v.Z}
 		}
 		st.nades = append(st.nades, NadeInfo{
-			ID:         nb.id,
-			Tick:       p.GameState().IngameTick(),
-			Round:      nb.round,
-			Thrower:    nb.thrower,
-			Team:       nb.team,
-			Weapon:     nb.weapon,
-			StartX:     nb.startX,
-			StartY:     nb.startY,
-			Trajectory: traj,
-			ThrowerPosX: nb.throwerPos.X,
-			ThrowerPosY: nb.throwerPos.Y,
-			ThrowerPosZ: nb.throwerPos.Z,
+			ID:           nb.id,
+			Tick:         p.GameState().IngameTick(),
+			Round:        nb.round,
+			Thrower:      nb.thrower,
+			Team:         nb.team,
+			Weapon:       nb.weapon,
+			StartX:       nb.startX,
+			StartY:       nb.startY,
+			Trajectory:   traj,
+			ThrowerPosX:  nb.throwerPos.X,
+			ThrowerPosY:  nb.throwerPos.Y,
+			ThrowerPosZ:  nb.throwerPos.Z,
 			ThrowerPitch: nb.throwerPitch,
 			ThrowerYaw:   nb.throwerYaw,
 			ThrowerRoll:  0,
@@ -1005,8 +1009,6 @@ var analysisCache = struct {
 	sync.RWMutex
 	m map[string]*Analysis
 }{m: make(map[string]*Analysis)}
-
-
 
 func cacheKey(name string, size int64) string {
 	return fmt.Sprintf("%s|%d", name, size)

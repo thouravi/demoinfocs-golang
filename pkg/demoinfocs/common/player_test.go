@@ -389,10 +389,53 @@ func TestPlayer_CrosshairCode(t *testing.T) {
 	assert.Equal(t, "CSGO-jvnbx-S3xFK-iEJXD-Y27Nd-AO6FP", pl.CrosshairCode())
 }
 
+func TestPlayer_Crosshair(t *testing.T) {
+	pl := playerWithProperty("m_szCrosshairCodes", st.PropertyValue{Any: "CSGO-jvnbx-S3xFK-iEJXD-Y27Nd-AO6FP"})
+
+	ch := pl.Crosshair()
+	if assert.NotNil(t, ch) {
+		assert.InDelta(t, 2.0, ch.Length, 0.001)
+		assert.InDelta(t, -2.0, ch.Gap, 0.001)
+		assert.Equal(t, 255, ch.Red)
+		assert.Equal(t, 213, ch.Green)
+		assert.Equal(t, 0, ch.Blue)
+		assert.Equal(t, 4, ch.Style)
+		assert.True(t, ch.OutlineEnabled)
+	}
+}
+
 func TestPlayer_WithoutCrosshairCode(t *testing.T) {
 	pl := newPlayer(0)
 
 	assert.Equal(t, pl.CrosshairCode(), "")
+	assert.Nil(t, pl.Crosshair())
+}
+
+func TestDecodeCrosshairShareCode_Invalid(t *testing.T) {
+	_, err := DecodeCrosshairShareCode("not-a-code")
+	assert.Error(t, err)
+
+	_, err = DecodeCrosshairShareCode("CSGO-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX")
+	// checksum will likely fail
+	assert.Error(t, err)
+}
+
+func TestCrosshairRoundtrip(t *testing.T) {
+	orig := "CSGO-jvnbx-S3xFK-iEJXD-Y27Nd-AO6FP"
+	ch, err := DecodeCrosshairShareCode(orig)
+	if !assert.NoError(t, err) || !assert.NotNil(t, ch) {
+		return
+	}
+	enc, err := EncodeCrosshairShareCode(ch)
+	assert.NoError(t, err)
+	// Note: may not be bit-identical string (non-canonical bits in orig code), but must decode to equivalent settings
+	ch2, err := DecodeCrosshairShareCode(enc)
+	assert.NoError(t, err)
+	assert.Equal(t, ch.Length, ch2.Length)
+	assert.Equal(t, ch.Gap, ch2.Gap)
+	assert.Equal(t, ch.Style, ch2.Style)
+	assert.Equal(t, ch.Red, ch2.Red)
+	assert.Equal(t, ch.OutlineEnabled, ch2.OutlineEnabled)
 }
 
 func TestPlayer_Ping(t *testing.T) {

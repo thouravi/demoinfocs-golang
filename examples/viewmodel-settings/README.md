@@ -1,6 +1,8 @@
 # Player Viewmodel Settings
 
-This example shows how to use the library to extract player viewmodel settings from CS2 demos. Viewmodel settings include the viewmodel offset (X, Y, Z) and field of view.
+This example shows how to use the library to extract player viewmodel settings from CS2 demos. Viewmodel settings include the viewmodel offset (X, Y, Z), field of view, and crosshair code/settings.
+
+Use `player.CrosshairCode()` for the share code string, and `player.Crosshair()` (or `common.DecodeCrosshairShareCode(code)`) for the decoded struct with length/gap/color/etc. Useful for showing visual crosshair previews (see cmd/analyzer for canvas example).
 
 ## Running the example
 
@@ -22,4 +24,4 @@ Magisk: Viewmodel Offset=(2.5, 0.0, -1.5), FOV=60.0
 kaze: Viewmodel Offset=(2.5, 0.0, -1.5), FOV=60.0
 ```
 
-Note: Viewmodel settings are only available in CS2 demos. CS:GO demos will show zero values.
+Note: Viewmodel + crosshair settings are only available in CS2 demos (player pawn properties). CS:GO demos will show zero/empty values. The analyzer cmd/ uses the new visual preview rendering for crosshairs.

@@ -24,7 +24,7 @@ See [cmd/analyzer/README.md](cmd/analyzer/README.md) for full details.
 - Round-by-round (`events.RoundStart` / `RoundEnd`)
 - Heatmaps from `events.WeaponFire` + map coordinate translation (using library radar assets)
 - Full grenade trajectories + lineups (`events.GrenadeProjectileThrow` / `Destroy` + `Projectile.Trajectory`)
-- Player Viewmodel Settings (via `common.Player.ViewmodelOffset()` / `ViewmodelFOV()` / `CrosshairCode()` on CS2 demos)
+- Player Viewmodel Settings + visual crosshair previews (via `common.Player.ViewmodelOffset()` / `ViewmodelFOV()` / `CrosshairCode()` / `Crosshair()` + `DecodeCrosshairShareCode` on CS2 demos). The web UI shows small in-game style canvas renders + modal detail view.
 - Voice comms via net messages (`msg.CSVCMsg_VoiceData`)
 - Everything else: game state, participants, equipment, infernos, bomb events etc. (easily extendable in `parseDemo`)
 

@@ -526,6 +526,21 @@ func (p *Player) CrosshairCode() string {
 	return getString(p.Entity, "m_szCrosshairCodes")
 }
 
+// Crosshair decodes and returns the player's crosshair settings (CS2 feature).
+// Returns nil if no crosshair code is present or if decoding fails.
+// See also CrosshairCode() and common.DecodeCrosshairShareCode.
+func (p *Player) Crosshair() *Crosshair {
+	code := p.CrosshairCode()
+	if code == "" {
+		return nil
+	}
+	ch, err := DecodeCrosshairShareCode(code)
+	if err != nil {
+		return nil
+	}
+	return ch
+}
+
 // ViewmodelOffset returns the player's viewmodel offset as a 3D vector (X, Y, Z).
 // Returns zero vector if not available (CS:GO demos or player not alive).
 func (p *Player) ViewmodelOffset() r3.Vector {

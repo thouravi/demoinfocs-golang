@@ -7,7 +7,7 @@ A self-contained web application built **on top of** demoinfocs-golang that extr
 - Full player statistics (K/D/A + ADR from hurt events)
 - Weapon fire positions → interactive heatmaps (T / CT / all)
 - Grenade throws + full trajectories (lineups) with colored paths on radar
-- Player Viewmodel Settings (offset X/Y/Z, FOV, crosshair code via `Player.ViewmodelOffset()`, `ViewmodelFOV()`, `CrosshairCode()` — CS2 only)
+- Player Viewmodel Settings (offset X/Y/Z, FOV, crosshair code + decoded settings via `Player.ViewmodelOffset()`, `ViewmodelFOV()`, `CrosshairCode()`, `Crosshair()` — CS2 only). Analyzer renders interactive visual previews (canvas) of how the crosshair looks in-game.
 - Voice communications (raw packets from `CSVCMsg_VoiceData` / `CCLCMsg_VoiceData`)
 - Rounds, scores, timings
 - Map radar overlays (loaded from the library's own `examples/_assets`)

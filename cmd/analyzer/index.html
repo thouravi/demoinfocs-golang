@@ -164,7 +164,7 @@
       <div class="border-b border-slate-800 mb-4 flex flex-wrap gap-x-0.5 text-sm bg-slate-900/40 rounded-t-2xl px-1 pt-1" id="tabs">
         <div onclick="switchTab('overview')" class="tab active" data-tab="overview">Overview</div>
         <div onclick="switchTab('players')" class="tab" data-tab="players">Players &amp; Stats</div>
-        <div onclick="switchTab('viewmodels')" class="tab" data-tab="viewmodels">Viewmodel Settings</div>
+        <div onclick="switchTab('viewmodels')" class="tab" data-tab="viewmodels">Viewmodels &amp; Crosshairs</div>
         <div onclick="switchTab('rounds')" class="tab" data-tab="rounds">Rounds</div>
         <div onclick="switchTab('chat')" class="tab" data-tab="chat">Chat</div>
         <div onclick="switchTab('kills')" class="tab" data-tab="kills">Kills</div>
@@ -217,8 +217,8 @@
 
       <div id="panel-viewmodels" class="tab-panel hidden">
         <div class="cs-card rounded-3xl p-4">
-          <div class="section-title mb-1.5">Player Viewmodel Settings <span class="text-[10px] text-amber-400">(CS2 only)</span></div>
-          <div class="text-xs text-slate-400 mb-2">Extracted via <code>player.ViewmodelOffset()</code>, <code>player.ViewmodelFOV()</code> and <code>player.CrosshairCode()</code> (sampled on round starts + end of demo). Click any crosshair to copy.</div>
+          <div class="section-title mb-1.5">Player Viewmodels &amp; Crosshairs <span class="text-[10px] text-amber-400">(CS2 only)</span></div>
+          <div class="text-xs text-slate-400 mb-2">Extracted via <code>player.ViewmodelOffset()</code>, <code>player.ViewmodelFOV()</code> and <code>player.Crosshair()</code> / <code>CrosshairCode()</code> (sampled on round starts + end of demo). Click the <b>code</b> to copy; the small preview on the right is a live in-game style render (click it for large modal + console commands).</div>
           <div class="cs-card rounded-2xl overflow-hidden border border-slate-800">
             <table class="w-full data-table text-sm">
               <thead class="bg-slate-900 text-left text-xs uppercase text-slate-400">
@@ -227,7 +227,7 @@
                   <th>Team</th>
                   <th>Offset (X, Y, Z)</th>
                   <th class="text-right">FOV</th>
-                  <th>Crosshair Code</th>
+                  <th>Crosshair</th>
                 </tr>
               </thead>
               <tbody id="viewmodels-tbody" class="divide-y divide-slate-800"></tbody>
@@ -331,6 +331,32 @@
     </div>
 
     <div id="no-demo-hint" class="text-center py-10 text-slate-400 text-sm">Select a demo above and click ANALYZE to extract chat, kills, nades, voice, heatmaps and more.</div>
+  </div>
+
+  <!-- Crosshair visual modal (in-game like preview from decoded share code) -->
+  <div id="crosshair-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onclick="if (event.target.id === 'crosshair-modal') hideCrosshairModal()">
+    <div class="cs-card w-full max-w-md rounded-3xl p-5 border border-slate-700" onclick="event.stopImmediatePropagation()">
+      <div class="flex items-center justify-between mb-3">
+        <div>
+          <div class="font-semibold text-emerald-300">Crosshair Preview</div>
+          <div id="modal-cross-code" class="font-mono text-[10px] text-slate-400 break-all"></div>
+        </div>
+        <button onclick="hideCrosshairModal()" class="text-slate-400 hover:text-white text-xl leading-none px-2">×</button>
+      </div>
+
+      <div class="bg-[#0b0e14] rounded-2xl p-3 mb-3 border border-slate-800 flex items-center justify-center">
+        <canvas id="modal-cross-canvas" width="280" height="280" class="rounded-xl" style="image-rendering: pixelated; max-width: 100%;"></canvas>
+      </div>
+
+      <div id="modal-cross-meta" class="grid grid-cols-2 gap-x-3 gap-y-1 text-xs mb-3 font-mono text-slate-300"></div>
+
+      <div class="flex flex-wrap gap-2">
+        <button id="modal-btn-copy" class="flex-1 px-3 py-1.5 text-sm rounded-2xl border border-emerald-700/60 hover:bg-emerald-900/40 text-emerald-300">Copy Code</button>
+        <button id="modal-btn-convars" class="flex-1 px-3 py-1.5 text-sm rounded-2xl border border-slate-600 hover:bg-slate-800">Copy Console Commands</button>
+        <button id="modal-btn-png" class="px-3 py-1.5 text-sm rounded-2xl border border-slate-600 hover:bg-slate-800">PNG</button>
+      </div>
+      <div class="mt-2 text-[10px] text-slate-500">Preview approximates in-game appearance (static pose). Use the copied commands or code in CS2 console / crosshair menu.</div>
+    </div>
   </div>
 
   <script>
@@ -532,7 +558,7 @@
         <div><span class="text-slate-400">Grenades thrown:</span> ${(a.nades||[]).length}</div>
         <div><span class="text-slate-400">Advanced viz:</span> ${(a.infernos||[]).length} mollies, ${(a.bombEvents||[]).length} bomb events</div>
         <div><span class="text-slate-400">Chat messages:</span> ${(a.chats||[]).length}</div>
-        <div><span class="text-slate-400">Viewmodel settings:</span> ${(a.players||[]).filter(p => p.viewmodelFOV || p.crosshairCode || (p.viewmodelOffset && (p.viewmodelOffset.X||p.viewmodelOffset.Y||p.viewmodelOffset.Z))).length } / ${(a.players||[]).length} players (CS2 feature)</div>
+        <div><span class="text-slate-400">Viewmodel + Crosshair:</span> ${(a.players||[]).filter(p => p.viewmodelFOV || p.crosshairCode || (p.viewmodelOffset && (p.viewmodelOffset.X||p.viewmodelOffset.Y||p.viewmodelOffset.Z))).length } / ${(a.players||[]).length} players (CS2; click previews in Viewmodel Settings tab for visuals)</div>
       `;
 
       const top = document.getElementById('overview-top');
@@ -637,27 +663,73 @@
       if (!tb) return;
       tb.innerHTML = '';
       // Only show players that have some viewmodel data (or all, to be complete)
-      const withData = players.filter(p => p.viewmodelFOV || p.crosshairCode || (p.viewmodelOffset && (p.viewmodelOffset.X || p.viewmodelOffset.Y || p.viewmodelOffset.Z)));
+      const withData = players.filter(p => p.viewmodelFOV || p.crosshairCode || p.crosshair || (p.viewmodelOffset && (p.viewmodelOffset.X || p.viewmodelOffset.Y || p.viewmodelOffset.Z)));
       const list = (withData.length > 0 ? withData : players);
       list.forEach(p => {
         const vm = p.viewmodelOffset || {X:0, Y:0, Z:0};
         const fov = (p.viewmodelFOV || 0).toFixed(1);
-        const cross = p.crosshairCode || '';
+        const crossCode = p.crosshairCode || '';
+        const ch = p.crosshair || null; // parsed from backend DecodeCrosshairShareCode
+
         const tr = document.createElement('tr');
         tr.className = 'hover:bg-slate-800/60';
-        const crossHtml = cross 
-          ? `<button class="copy-crosshair inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 bg-slate-800 hover:bg-emerald-900/60 border border-slate-600 hover:border-emerald-700 rounded text-emerald-300 transition-colors" data-cross="${escapeHtml(cross)}" title="Copy crosshair code">
-               ${escapeHtml(cross)}
-               <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M8 16v-4m4 4v4m4-8v8m4-4v-4m-16 8h16a2 2 0 002-2V6a2 2 0 00-2-2H4a2 2 0 00-2 2v12a2 2 0 002 2" /></svg>
-             </button>`
-          : '<span class="text-slate-500">—</span>';
+
+        // Build crosshair cell with visual preview (canvas) + code
+        const crossTd = document.createElement('td');
+        crossTd.className = 'py-1';
+
+        if (ch || crossCode) {
+          const wrap = document.createElement('div');
+          wrap.className = 'flex items-center gap-2';
+
+          // code first (left), click to copy
+          const codeLine = document.createElement('div');
+          if (crossCode) {
+            codeLine.className = 'copy-crosshair inline-flex items-center gap-1 font-mono text-[10px] px-1.5 py-0.5 bg-slate-800 hover:bg-emerald-900/60 border border-slate-600 hover:border-emerald-700 rounded text-emerald-300 cursor-pointer transition-colors max-w-[190px] truncate';
+            codeLine.setAttribute('data-cross', crossCode);
+            codeLine.title = 'Click to copy crosshair code';
+            codeLine.innerHTML = escapeHtml(crossCode) + ' <span class="opacity-60">⎘</span>';
+          } else {
+            codeLine.className = 'text-slate-500 text-xs';
+            codeLine.textContent = '—';
+          }
+
+          // small preview canvas on the RIGHT of the code
+          const small = document.createElement('canvas');
+          small.width = 28;
+          small.height = 28;
+          small.className = 'cursor-pointer rounded border border-slate-700 bg-[#0b1120] hover:border-emerald-600 transition-colors flex-shrink-0';
+          small.title = crossCode ? ('Click for large preview of ' + crossCode) : 'Click for crosshair preview details';
+          if (ch) {
+            drawCrosshair(small, ch, 1.2); // zoom tuned so crosshair fills the 28px icon well (accurate renderer already does *2 etc internally)
+          } else {
+            // minimal placeholder
+            const c2 = small.getContext('2d');
+            c2.fillStyle = '#111';
+            c2.fillRect(0,0,28,28);
+            c2.fillStyle = '#555';
+            c2.font = '9px sans-serif';
+            c2.fillText('?', 9, 18);
+          }
+          small.onclick = (ev) => {
+            ev.stopPropagation();
+            showCrosshairModal(crossCode, ch, small);
+          };
+
+          wrap.appendChild(codeLine);
+          wrap.appendChild(small);
+          crossTd.appendChild(wrap);
+        } else {
+          crossTd.innerHTML = '<span class="text-slate-500">—</span>';
+        }
+
         tr.innerHTML = `
           <td class="font-medium">${escapeHtml(p.name)}</td>
           <td><span class="px-1.5 py-px rounded text-xs ${p.team==='T'?'bg-orange-900/70 text-orange-300':'bg-sky-900/70 text-sky-300'}">${p.team}</span></td>
           <td class="font-mono text-xs text-slate-300">${vm.X.toFixed(1)}, ${vm.Y.toFixed(1)}, ${vm.Z.toFixed(1)}</td>
           <td class="text-right font-mono text-slate-200">${fov}</td>
-          <td>${crossHtml}</td>
         `;
+        tr.appendChild(crossTd);
         tb.appendChild(tr);
       });
       if (list.length === 0) {
@@ -666,25 +738,287 @@
         tb.appendChild(tr);
       }
 
-      // Wire copy handlers (modern clipboard, with visual feedback)
-      tb.querySelectorAll('.copy-crosshair').forEach(btn => {
-        btn.addEventListener('click', async (ev) => {
-          const code = btn.getAttribute('data-cross') || btn.textContent.trim();
+      // Wire copy handlers for the code lines (click anywhere on code pill)
+      tb.querySelectorAll('.copy-crosshair').forEach(el => {
+        el.addEventListener('click', async (ev) => {
+          ev.stopPropagation();
+          const code = el.getAttribute('data-cross') || el.textContent.trim().replace('⎘','').trim();
           try {
             await navigator.clipboard.writeText(code);
-            const orig = btn.innerHTML;
-            btn.innerHTML = `Copied! <span class="text-emerald-400">✓</span>`;
-            btn.disabled = true;
-            setTimeout(() => {
-              btn.innerHTML = orig;
-              btn.disabled = false;
-            }, 1400);
+            const orig = el.innerHTML;
+            el.innerHTML = `Copied! <span class="text-emerald-400">✓</span>`;
+            setTimeout(() => { el.innerHTML = orig; }, 1200);
           } catch (e) {
-            // fallback
             prompt('Copy crosshair code:', code);
           }
         });
       });
+    }
+
+    // Accurate CS2 crosshair renderer ported from production-accurate implementation
+    // (girlglock/cs2-crosshair static renderer + alignment/rounding tricks to match in-game rasterization).
+    // Draws "as the game would" for the given decoded ch values onto the target canvas.
+    function drawCrosshair(canvas, ch, previewZoom) {
+      if (!canvas || !ch) return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.imageSmoothingEnabled = false;
+
+      // dark in-game background
+      ctx.fillStyle = '#0a0c10';
+      ctx.fillRect(0, 0, w, h);
+
+      // faint reference cross for UI preview context (not part of in-game)
+      ctx.strokeStyle = '#1f2937';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(w/2, 0); ctx.lineTo(w/2, h);
+      ctx.moveTo(0, h/2); ctx.lineTo(w, h/2);
+      ctx.stroke();
+
+      const cx = w / 2;
+      const cy = h / 2;
+      const zoom = (previewZoom || 1);
+
+      // Only render classic styles (2/4) the same way as accurate tools; others fall back to similar static.
+      const style = ch.style || 4;
+      if (style !== 2 && style !== 4 && style !== 0 && style !== 1) {
+        // simple fallback for legacy etc.
+        ctx.fillStyle = `rgba(${ch.red||255},${ch.green||255},${ch.blue||255}, ${(ch.alpha||200)/255})`;
+        ctx.fillRect(cx-1, cy-1, 3, 3);
+        return;
+      }
+
+      const size = ch.length || 0;
+      const gapVal = ch.gap || 0;
+      const thickVal = ch.thickness || 0;
+      const outlineVal = ch.outline || 0;
+      const hasOutline = !!ch.outlineEnabled;
+      const hasDot = !!ch.centerDotEnabled;
+      const hasT = !!ch.tStyleEnabled;
+      const useAlpha = (ch.alphaEnabled !== false);
+      const alpha = useAlpha ? ((ch.alpha || 200) / 255) : 1;
+      const r = ch.red || 0, g = ch.green || 0, b = ch.blue || 0;
+
+      // Core calculations (from accurate renderer, scaled by zoom for target canvas size)
+      let crosshairLength = Math.floor(size * 2 * zoom);
+      let crosshairWidth = Math.max(1, Math.floor(thickVal * 2 * zoom));
+      let crosshairGap = Math.ceil((gapVal + 4) * zoom);
+      let adjustedLength = (size > 2 ? crosshairLength + 1 : crosshairLength);
+      const outlineThickness = hasOutline ? outlineVal * zoom : 0;  // float ok for rects
+      const crosshairColor = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+
+      let translate = (crosshairWidth % 2) / 2;
+      ctx.save();
+      ctx.translate(translate, translate);
+
+      // OUTLINES (black) - exact positioning/rounding from accurate source
+      if (hasOutline && outlineThickness > 0) {
+        ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+
+        const strokeTranslate = (crosshairWidth / 2) - Math.floor(crosshairWidth / 2);
+        ctx.translate(-translate, -translate);
+        ctx.translate(strokeTranslate, strokeTranslate);
+
+        // Right (horizontal arm)
+        ctx.fillRect(
+          (cx + ((crosshairWidth / 2) + crosshairGap)) - outlineThickness,
+          (cy - (crosshairWidth / 2)) - outlineThickness,
+          adjustedLength + (outlineThickness * 2),
+          crosshairWidth + (outlineThickness * 2)
+        );
+        // Left
+        ctx.fillRect(
+          (cx - ((adjustedLength + (crosshairWidth / 2)) + crosshairGap)) - outlineThickness,
+          (cy - (crosshairWidth / 2)) - outlineThickness,
+          adjustedLength + (outlineThickness * 2),
+          crosshairWidth + (outlineThickness * 2)
+        );
+        // Bottom (vertical arm)
+        ctx.fillRect(
+          (cx - (crosshairWidth / 2)) - outlineThickness,
+          (cy + ((crosshairWidth / 2) + crosshairGap)) - outlineThickness,
+          crosshairWidth + (outlineThickness * 2),
+          adjustedLength + (outlineThickness * 2)
+        );
+        // Top (if not T-style)
+        if (!hasT) {
+          ctx.fillRect(
+            (cx - (crosshairWidth / 2)) - outlineThickness,
+            (cy - ((adjustedLength + (crosshairWidth / 2) + crosshairGap))) - outlineThickness,
+            crosshairWidth + (outlineThickness * 2),
+            adjustedLength + (outlineThickness * 2)
+          );
+        }
+
+        ctx.translate(-strokeTranslate, -strokeTranslate);
+        ctx.translate(translate, translate);
+      }
+
+      // Main colored lines
+      ctx.fillStyle = crosshairColor;
+
+      // Right
+      ctx.fillRect(
+        cx + ((crosshairWidth / 2) + crosshairGap),
+        cy - (crosshairWidth / 2),
+        adjustedLength,
+        crosshairWidth
+      );
+      // Left
+      ctx.fillRect(
+        cx - ((adjustedLength + (crosshairWidth / 2)) + crosshairGap),
+        cy - (crosshairWidth / 2),
+        adjustedLength,
+        crosshairWidth
+      );
+      // Bottom
+      ctx.fillRect(
+        cx - (crosshairWidth / 2),
+        cy + ((crosshairWidth / 2) + crosshairGap),
+        crosshairWidth,
+        adjustedLength
+      );
+      // Top
+      if (!hasT) {
+        ctx.fillRect(
+          cx - (crosshairWidth / 2),
+          cy - ((adjustedLength + (crosshairWidth / 2)) + crosshairGap),
+          crosshairWidth,
+          adjustedLength
+        );
+      }
+
+      // Center dot
+      if (hasDot) {
+        const dotWidth = crosshairWidth;
+        const dotHeight = crosshairWidth;
+
+        if (hasOutline && outlineThickness > 0) {
+          ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+          const strokeTranslate = (crosshairWidth / 2) - Math.floor(crosshairWidth / 2);
+          ctx.translate(-translate, -translate);
+          ctx.translate(strokeTranslate, strokeTranslate);
+
+          ctx.fillRect(
+            (cx - (crosshairWidth / 2)) - outlineThickness,
+            (cy - (crosshairWidth / 2)) - outlineThickness,
+            crosshairWidth + (outlineThickness * 2),
+            crosshairWidth + (outlineThickness * 2)
+          );
+
+          ctx.translate(-strokeTranslate, -strokeTranslate);
+          ctx.translate(translate, translate);
+        }
+
+        ctx.fillStyle = crosshairColor;
+        ctx.fillRect(
+          cx - (dotWidth / 2),
+          cy - (dotHeight / 2),
+          dotWidth,
+          dotHeight
+        );
+      }
+
+      ctx.restore();
+    }
+
+    let currentModalCross = null;
+    function showCrosshairModal(code, ch, sourceCanvas) {
+      const modal = document.getElementById('crosshair-modal');
+      const codeEl = document.getElementById('modal-cross-code');
+      const metaEl = document.getElementById('modal-cross-meta');
+      const bigC = document.getElementById('modal-cross-canvas');
+
+      codeEl.textContent = code || '(no code)';
+      currentModalCross = {code, ch};
+
+      // draw large
+      if (ch) {
+        drawCrosshair(bigC, ch, 3.5); // larger detailed view in modal
+      } else {
+        const c2 = bigC.getContext('2d');
+        c2.fillStyle = '#111827'; c2.fillRect(0,0,bigC.width,bigC.height);
+        c2.fillStyle = '#64748b'; c2.fillText('no decoded data', 70, 140);
+      }
+
+      // meta grid
+      metaEl.innerHTML = '';
+      if (ch) {
+        const items = [
+          ['Length', ch.length], ['Gap', ch.gap], ['Thickness', ch.thickness],
+          ['Style', ch.style], ['Color', `${ch.red},${ch.green},${ch.blue} (idx ${ch.color})`],
+          ['Alpha', ch.alpha], ['Outline', ch.outlineEnabled ? ch.outline : 'off'],
+          ['Dot', ch.centerDotEnabled ? 'on' : 'off'], ['T-Style', ch.tStyleEnabled ? 'on' : 'off'],
+          ['Recoil', ch.followRecoil ? 'on' : 'off']
+        ];
+        items.forEach(([k,v]) => {
+          const d = document.createElement('div');
+          d.className = 'flex justify-between border-b border-slate-800 py-0.5';
+          d.innerHTML = `<span class="text-slate-400">${k}</span><span class="text-slate-200">${v}</span>`;
+          metaEl.appendChild(d);
+        });
+      } else {
+        metaEl.innerHTML = '<div class="col-span-2 text-slate-500">Crosshair data not parsed (raw code only).</div>';
+      }
+
+      // wire buttons (remove old listeners by clone or direct assign)
+      const copyBtn = document.getElementById('modal-btn-copy');
+      const conBtn = document.getElementById('modal-btn-convars');
+      const pngBtn = document.getElementById('modal-btn-png');
+
+      copyBtn.onclick = async () => {
+        if (!currentModalCross || !currentModalCross.code) return;
+        try { await navigator.clipboard.writeText(currentModalCross.code); copyBtn.textContent='Copied!'; setTimeout(()=>copyBtn.textContent='Copy Code',900); } catch(e){ prompt('Copy:', currentModalCross.code); }
+      };
+      conBtn.onclick = () => {
+        if (!currentModalCross || !currentModalCross.ch) { alert('No parsed data for convars'); return; }
+        const cmds = crosshairToConVars(currentModalCross.ch);
+        navigator.clipboard.writeText(cmds).then(() => { conBtn.textContent='Copied convars!'; setTimeout(()=>conBtn.textContent='Copy Console Commands',900); }).catch(()=>prompt('Commands:', cmds));
+      };
+      pngBtn.onclick = () => {
+        const a = document.createElement('a');
+        a.href = bigC.toDataURL('image/png');
+        a.download = `crosshair_${(currentModalCross && currentModalCross.code || 'preview').replace(/[^a-z0-9]/gi,'_')}.png`;
+        a.click();
+      };
+
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+    function hideCrosshairModal() {
+      const modal = document.getElementById('crosshair-modal');
+      modal.classList.remove('flex');
+      modal.classList.add('hidden');
+    }
+
+    // Mirror of Go's Crosshair.ToConsoleCommands()
+    function crosshairToConVars(ch) {
+      if (!ch) return '';
+      const b = v => v ? 1 : 0;
+      return `cl_crosshair_drawoutline "${b(ch.outlineEnabled)}"
+cl_crosshair_dynamic_maxdist_splitratio "${ch.splitSizeRatio||0}"
+cl_crosshair_dynamic_splitalpha_innermod "${ch.innerSplitAlpha||0}"
+cl_crosshair_dynamic_splitalpha_outermod "${ch.outerSplitAlpha||0}"
+cl_crosshair_dynamic_splitdist "${ch.splitDistance||0}"
+cl_crosshair_outlinethickness "${ch.outline||0}"
+cl_crosshair_t "${b(ch.tStyleEnabled)}"
+cl_crosshairalpha "${ch.alpha||200}"
+cl_crosshaircolor "${ch.color||1}"
+cl_crosshaircolor_b "${ch.blue||0}"
+cl_crosshaircolor_g "${ch.green||0}"
+cl_crosshaircolor_r "${ch.red||0}"
+cl_crosshairdot "${b(ch.centerDotEnabled)}"
+cl_crosshairgap "${ch.gap||0}"
+cl_crosshairgap_useweaponvalue "${b(ch.deployedWeaponGapEnabled)}"
+cl_crosshairsize "${ch.length||0}"
+cl_crosshairstyle "${ch.style||4}"
+cl_crosshairthickness "${ch.thickness||0.5}"
+cl_crosshairusealpha "${b(ch.alphaEnabled)}"
+cl_fixedcrosshairgap "${ch.fixedCrosshairGap||0}"
+cl_crosshair_recoil "${b(ch.followRecoil)}"
+`;
     }
 
     function renderRounds(rounds) {
