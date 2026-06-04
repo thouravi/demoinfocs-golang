@@ -286,9 +286,17 @@
             </select>
             <select id="hm-style" onchange="drawHeatmap()" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm" title="Visualization style">
               <option value="dots">Dots</option>
-              <option value="density">Density (blurred glow)</option>
+              <option value="density" selected>Density (blurred glow)</option>
               <option value="grid">Grid Bins</option>
               <option value="contour">Contour Lines</option>
+            </select>
+            <select id="hm-nade-filter" onchange="drawHeatmap()" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm hidden" title="Filter to specific grenade type (only for Grenade Lands)">
+              <option value="all">All grenades</option>
+              <option value="Smoke">Smoke</option>
+              <option value="HE">HE</option>
+              <option value="Flash">Flash</option>
+              <option value="Molotov">Molotov</option>
+              <option value="Decoy">Decoy</option>
             </select>
             <div class="flex gap-x-1 text-xs bg-slate-900/70 border border-slate-800 rounded-2xl p-0.5">
               <label class="flex items-center gap-x-1 cursor-pointer px-2 py-0.5 rounded-xl hover:bg-slate-800"><input type="checkbox" id="hm-t" checked onchange="drawHeatmap()" class="accent-emerald-500"> <span class="text-orange-300">T</span></label>
@@ -623,6 +631,7 @@
       allNades = a.nades || [];
       setupNadeTypeFilters(allNades);
       filterAndRenderNades();
+      populateNadeHeatmapFilter(allNades);
 
       // voice
       renderVoice(a.voice || {players:[]}, a.demoName);
@@ -1461,6 +1470,13 @@ cl_crosshair_recoil "${b(ch.followRecoil)}"
       const ctx = canvas.getContext('2d', {alpha: true});
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+      const hmType = document.getElementById('hm-type').value || 'shots';
+      const hmStyle = document.getElementById('hm-style').value || 'dots';
+      const nfEl = document.getElementById('hm-nade-filter');
+      if (nfEl) {
+        nfEl.classList.toggle('hidden', hmType !== 'nades');
+      }
+
       if (!currentAnalysis) return;
 
       const w = canvas.width, h = canvas.height;
@@ -1478,8 +1494,6 @@ cl_crosshair_recoil "${b(ch.followRecoil)}"
       const showCT = document.getElementById('hm-ct').checked;
       const showAll = document.getElementById('hm-all').checked;
 
-      const hmType = document.getElementById('hm-type').value || 'shots';
-      const hmStyle = document.getElementById('hm-style').value || 'dots';
       const meta = currentAnalysis.mapMeta;
 
       // Determine scale from loaded radar natural size
@@ -1554,6 +1568,16 @@ cl_crosshair_recoil "${b(ch.followRecoil)}"
         label = 'Bomb plants/defuses';
       }
 
+      // Grenade subtype filter for "nades" (Grenade Lands) heatmap - only applies when selected
+      if (hmType === 'nades') {
+        const nf = document.getElementById('hm-nade-filter');
+        const f = nf ? nf.value : 'all';
+        if (f && f !== 'all' && f !== '') {
+          points = points.filter(p => (p.weapon || '') === f);
+          label = `Grenade landings (${f})`;
+        }
+      }
+
       // Apply team filter where it makes sense
       let filteredPoints = points;
       if (!showAll && (hmType === 'shots' || hmType === 'nades')) {
@@ -1568,160 +1592,129 @@ cl_crosshair_recoil "${b(ch.followRecoil)}"
       let drawn = 0;
       const maxDraw = 25000;
 
-      if (hmStyle === 'dots') {
-        // Original soft dots
-        ctx.globalAlpha = alpha;
-        for (let i = 0; i < filteredPoints.length; i++) {
-          const p = filteredPoints[i];
-          let rx, ry;
-          const px = p.x || p.victimX || p.killerX || p.startX || (p.position && p.position.x) || 0;
-          const py = p.y || p.victimY || p.killerY || p.startY || (p.position && p.position.y) || 0;
-          if (meta && meta.scale) {
-            rx = (px - meta.posX) / meta.scale;
-            ry = (meta.posY - py) / meta.scale;
-          } else {
-            rx = (px + 2200) / 4400 * radarW;
-            ry = (py + 2200) / 4400 * radarH;
-          }
-          const drawX = rx * scaleX;
-          const drawY = ry * scaleY;
+      // Compute density grid for ALL styles so color can reflect local density (red = high activity)
+      const cellSize = 12;
+      const cols = Math.ceil(w / cellSize) + 1;
+      const rows = Math.ceil(h / cellSize) + 1;
+      const densityGrid = Array.from({length: rows}, () => new Array(cols).fill(0));
+      let maxCount = 0;
 
-          const r = pointRadius;
-          ctx.fillStyle = `rgba(${baseColor}, ${alpha})`;
+      // First pass: bin all points (after team filter) to compute density
+      const drawCoords = []; // cache computed screen coords + original point
+      for (let i = 0; i < filteredPoints.length; i++) {
+        const p = filteredPoints[i];
+        let rx, ry;
+        const px = p.x || p.victimX || p.killerX || p.startX || (p.position && p.position.x) || 0;
+        const py = p.y || p.victimY || p.killerY || p.startY || (p.position && p.position.y) || 0;
+        if (meta && meta.scale) {
+          rx = (px - meta.posX) / meta.scale;
+          ry = (meta.posY - py) / meta.scale;
+        } else {
+          rx = (px + 2200) / 4400 * radarW;
+          ry = (py + 2200) / 4400 * radarH;
+        }
+        const drawX = rx * scaleX;
+        const drawY = ry * scaleY;
+
+        const gx = Math.floor(drawX / cellSize);
+        const gy = Math.floor(drawY / cellSize);
+        if (gx >= 0 && gx < cols && gy >= 0 && gy < rows) {
+          densityGrid[gy][gx]++;
+          if (densityGrid[gy][gx] > maxCount) maxCount = densityGrid[gy][gx];
+        }
+        drawCoords.push({ drawX, drawY, origP: p, gx, gy });
+        drawn++;
+        if (drawn > maxDraw) break;
+      }
+      if (maxCount < 1) maxCount = 1;
+
+      drawn = 0; // reset for actual drawing count
+
+      if (hmStyle === 'dots') {
+        for (let i = 0; i < drawCoords.length; i++) {
+          const { drawX, drawY, gx, gy } = drawCoords[i];
+          let norm = 0;
+          if (gx >= 0 && gx < cols && gy >= 0 && gy < rows) {
+            norm = densityGrid[gy][gx] / maxCount;
+          }
+          const r = pointRadius * (0.8 + norm * 0.6); // slightly larger in hot areas
+          ctx.fillStyle = getHeatColor(norm, alpha);
           ctx.beginPath();
           ctx.arc(drawX, drawY, r, 0, Math.PI * 2);
           ctx.fill();
 
-          ctx.fillStyle = `rgba(255,255,255,0.25)`;
+          // small white core for precision
+          ctx.fillStyle = `rgba(255,255,255,0.3)`;
           ctx.beginPath();
-          ctx.arc(drawX, drawY, Math.max(0.7, r * 0.3), 0, Math.PI * 2);
+          ctx.arc(drawX, drawY, Math.max(0.6, r * 0.25), 0, Math.PI * 2);
           ctx.fill();
 
           drawn++;
-          if (drawn > maxDraw) break;
         }
-        ctx.globalAlpha = 1.0;
       } else if (hmStyle === 'density') {
-        // Density glow: large soft overlapping circles, low alpha accumulation for heat
-        const heatR = Math.max(6, pointRadius * 5);
-        ctx.globalAlpha = 0.06;
-        ctx.fillStyle = `rgba(${baseColor}, 1)`;
-        for (let i = 0; i < filteredPoints.length; i++) {
-          const p = filteredPoints[i];
-          let rx, ry;
-          const px = p.x || p.victimX || p.killerX || p.startX || (p.position && p.position.x) || 0;
-          const py = p.y || p.victimY || p.killerY || p.startY || (p.position && p.position.y) || 0;
-          if (meta && meta.scale) {
-            rx = (px - meta.posX) / meta.scale;
-            ry = (meta.posY - py) / meta.scale;
-          } else {
-            rx = (px + 2200) / 4400 * radarW;
-            ry = (py + 2200) / 4400 * radarH;
+        // Density: use heat color + accumulation. Hot areas will be redder.
+        const heatR = Math.max(8, pointRadius * 4.5);
+        for (let i = 0; i < drawCoords.length; i++) {
+          const { drawX, drawY, gx, gy } = drawCoords[i];
+          let norm = 0;
+          if (gx >= 0 && gx < cols && gy >= 0 && gy < rows) {
+            norm = densityGrid[gy][gx] / maxCount;
           }
-          const drawX = rx * scaleX;
-          const drawY = ry * scaleY;
-
+          const a = 0.04 + norm * 0.08; // stronger in hot spots
+          ctx.globalAlpha = a;
+          ctx.fillStyle = getHeatColor(norm, 1.0);
           ctx.beginPath();
           ctx.arc(drawX, drawY, heatR, 0, Math.PI * 2);
           ctx.fill();
-
           drawn++;
           if (drawn > maxDraw / 2) break;
         }
         ctx.globalAlpha = 1.0;
-        // light overlay of original small dots for detail
-        ctx.globalAlpha = 0.4;
-        for (let i = 0; i < Math.min(filteredPoints.length, 5000); i++) {
-          const p = filteredPoints[i];
-          let rx, ry;
-          const px = p.x || p.victimX || p.killerX || p.startX || (p.position && p.position.x) || 0;
-          const py = p.y || p.victimY || p.killerY || p.startY || (p.position && p.position.y) || 0;
-          if (meta && meta.scale) {
-            rx = (px - meta.posX) / meta.scale;
-            ry = (meta.posY - py) / meta.scale;
-          } else {
-            rx = (px + 2200) / 4400 * radarW;
-            ry = (py + 2200) / 4400 * radarH;
+
+        // detail dots on top, also heat-colored
+        ctx.globalAlpha = 0.5;
+        for (let i = 0; i < Math.min(drawCoords.length, 4000); i++) {
+          const { drawX, drawY, gx, gy } = drawCoords[i];
+          let norm = 0;
+          if (gx >= 0 && gx < cols && gy >= 0 && gy < rows) {
+            norm = densityGrid[gy][gx] / maxCount;
           }
-          const drawX = rx * scaleX;
-          const drawY = ry * scaleY;
-          ctx.fillStyle = `rgba(${baseColor}, 0.9)`;
+          ctx.fillStyle = getHeatColor(norm, 0.9);
           ctx.beginPath();
-          ctx.arc(drawX, drawY, pointRadius * 0.8, 0, Math.PI * 2);
+          ctx.arc(drawX, drawY, pointRadius * 0.9, 0, Math.PI * 2);
           ctx.fill();
         }
         ctx.globalAlpha = 1.0;
       } else if (hmStyle === 'grid') {
-        // Grid bin heatmap - excellent for density visualization
-        const cellSize = 10;
-        const cols = Math.ceil(w / cellSize) + 1;
-        const rows = Math.ceil(h / cellSize) + 1;
-        const grid = Array.from({length: rows}, () => new Array(cols).fill(0));
-        let maxCount = 0;
-
-        for (let i = 0; i < filteredPoints.length; i++) {
-          const p = filteredPoints[i];
-          let rx, ry;
-          const px = p.x || p.victimX || p.killerX || p.startX || (p.position && p.position.x) || 0;
-          const py = p.y || p.victimY || p.killerY || p.startY || (p.position && p.position.y) || 0;
-          if (meta && meta.scale) {
-            rx = (px - meta.posX) / meta.scale;
-            ry = (meta.posY - py) / meta.scale;
-          } else {
-            rx = (px + 2200) / 4400 * radarW;
-            ry = (py + 2200) / 4400 * radarH;
-          }
-          const drawX = rx * scaleX;
-          const drawY = ry * scaleY;
-
-          const gx = Math.floor(drawX / cellSize);
-          const gy = Math.floor(drawY / cellSize);
-          if (gx >= 0 && gx < cols && gy >= 0 && gy < rows) {
-            grid[gy][gx]++;
-            if (grid[gy][gx] > maxCount) maxCount = grid[gy][gx];
-          }
-          drawn++;
-          if (drawn > maxDraw) break;
-        }
-        if (maxCount < 1) maxCount = 1;
-
+        // Grid bin heatmap
         for (let gy = 0; gy < rows; gy++) {
           for (let gx = 0; gx < cols; gx++) {
-            const count = grid[gy][gx];
+            const count = densityGrid[gy][gx];
             if (count === 0) continue;
             const norm = Math.min(1, count / maxCount);
-            ctx.fillStyle = getHeatColor(norm, 0.5 + norm * 0.45);
+            ctx.fillStyle = getHeatColor(norm, 0.55 + norm * 0.4);
             ctx.fillRect(gx * cellSize, gy * cellSize, cellSize, cellSize);
           }
         }
+        drawn = filteredPoints.length; // approx
       } else if (hmStyle === 'contour') {
-        // Concentric circles for contour / isoline feel
-        ctx.globalAlpha = 0.12;
-        ctx.strokeStyle = `rgba(${baseColor}, 0.9)`;
-        ctx.lineWidth = 1.2;
-        for (let i = 0; i < filteredPoints.length; i++) {
-          const p = filteredPoints[i];
-          let rx, ry;
-          const px = p.x || p.victimX || p.killerX || p.startX || (p.position && p.position.x) || 0;
-          const py = p.y || p.victimY || p.killerY || p.startY || (p.position && p.position.y) || 0;
-          if (meta && meta.scale) {
-            rx = (px - meta.posX) / meta.scale;
-            ry = (meta.posY - py) / meta.scale;
-          } else {
-            rx = (px + 2200) / 4400 * radarW;
-            ry = (py + 2200) / 4400 * radarH;
+        ctx.globalAlpha = 0.1;
+        for (let i = 0; i < drawCoords.length; i++) {
+          const { drawX, drawY, gx, gy } = drawCoords[i];
+          let norm = 0;
+          if (gx >= 0 && gx < cols && gy >= 0 && gy < rows) {
+            norm = densityGrid[gy][gx] / maxCount;
           }
-          const drawX = rx * scaleX;
-          const drawY = ry * scaleY;
-
-          const baseR = pointRadius * 2.5;
-          for (let k = 1; k <= 5; k++) {
+          ctx.strokeStyle = getHeatColor(norm, 0.85);
+          ctx.lineWidth = 1.0 + norm * 1.5;
+          const baseR = pointRadius * 2.2;
+          for (let k = 1; k <= 6; k++) {
             ctx.beginPath();
-            ctx.arc(drawX, drawY, baseR * k * 0.9, 0, Math.PI * 2);
+            ctx.arc(drawX, drawY, baseR * k * 0.85, 0, Math.PI * 2);
             ctx.stroke();
           }
           drawn++;
-          if (drawn > maxDraw / 3) break;
+          if (drawn > maxDraw / 4) break;
         }
         ctx.globalAlpha = 1.0;
         ctx.lineWidth = 1;
@@ -1731,8 +1724,29 @@ cl_crosshair_recoil "${b(ch.followRecoil)}"
       if (label) {
         ctx.fillStyle = 'rgba(148, 163, 184, 0.85)';
         ctx.font = '11px sans-serif';
-        ctx.fillText(`${label} • ${hmStyle} • ${Math.min(drawn, filteredPoints.length)} points`, 12, 18);
+        ctx.fillText(`${label} • ${hmStyle} (red = high density) • ${Math.min(drawn || filteredPoints.length, filteredPoints.length)} points`, 12, 18);
       }
+    }
+
+    function populateNadeHeatmapFilter(nades) {
+      const sel = document.getElementById('hm-nade-filter');
+      if (!sel) return;
+      const current = sel.value || 'all';
+      sel.innerHTML = '<option value="all">All grenades</option>';
+      const types = [...new Set((nades || []).map(n => n.weapon).filter(Boolean))];
+      const preferred = ['Smoke', 'HE', 'Flash', 'Molotov', 'Decoy'];
+      const ordered = [];
+      preferred.forEach(p => { if (types.includes(p)) ordered.push(p); });
+      types.forEach(t => { if (!ordered.includes(t)) ordered.push(t); });
+      ordered.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t;
+        opt.textContent = t;
+        sel.appendChild(opt);
+      });
+      // try preserve previous selection if still present
+      const stillThere = [...sel.options].some(o => o.value === current);
+      sel.value = stillThere ? current : 'all';
     }
 
     // Nades / trajectories
@@ -2094,6 +2108,8 @@ cl_crosshair_recoil "${b(ch.followRecoil)}"
       if (hmTypeSel) hmTypeSel.onchange = drawHeatmap;
       const hmStyleSel = document.getElementById('hm-style');
       if (hmStyleSel) hmStyleSel.onchange = drawHeatmap;
+      const hmNadeSel = document.getElementById('hm-nade-filter');
+      if (hmNadeSel) hmNadeSel.onchange = drawHeatmap;
     }
 
     function initKeyboard() {
