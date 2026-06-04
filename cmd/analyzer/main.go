@@ -173,14 +173,18 @@ type RoundInfo struct {
 
 // KillInfo
 type KillInfo struct {
-	Tick     int    `json:"tick"`
-	Round    int    `json:"round"`
-	Killer   string `json:"killer"`
-	Victim   string `json:"victim"`
-	Weapon   string `json:"weapon"`
-	Headshot bool   `json:"headshot"`
-	Wallbang bool   `json:"wallbang"`
-	Assister string `json:"assister,omitempty"`
+	Tick     int     `json:"tick"`
+	Round    int     `json:"round"`
+	Killer   string  `json:"killer"`
+	Victim   string  `json:"victim"`
+	Weapon   string  `json:"weapon"`
+	Headshot bool    `json:"headshot"`
+	Wallbang bool    `json:"wallbang"`
+	Assister string  `json:"assister,omitempty"`
+	VictimX  float64 `json:"victimX,omitempty"`
+	VictimY  float64 `json:"victimY,omitempty"`
+	KillerX  float64 `json:"killerX,omitempty"`
+	KillerY  float64 `json:"killerY,omitempty"`
 }
 
 // ChatInfo
@@ -225,6 +229,8 @@ type NadeInfo struct {
 	ThrowerPitch float32 `json:"throwerPitch"`
 	ThrowerYaw   float32 `json:"throwerYaw"`
 	ThrowerRoll  float32 `json:"throwerRoll"`
+	LandX        float64 `json:"landX,omitempty"`
+	LandY        float64 `json:"landY,omitempty"`
 }
 
 type InfernoInfo struct {
@@ -714,7 +720,7 @@ func parseDemo(demoPath string) (*Analysis, error) {
 		if e.Weapon != nil {
 			weap = e.Weapon.String()
 		}
-		st.kills = append(st.kills, KillInfo{
+		ki := KillInfo{
 			Tick:     tick,
 			Round:    round,
 			Killer:   killer,
@@ -723,7 +729,18 @@ func parseDemo(demoPath string) (*Analysis, error) {
 			Headshot: e.IsHeadshot,
 			Wallbang: e.PenetratedObjects > 0,
 			Assister: assister,
-		})
+		}
+		if e.Victim != nil {
+			vp := e.Victim.Position()
+			ki.VictimX = vp.X
+			ki.VictimY = vp.Y
+		}
+		if e.Killer != nil {
+			kp := e.Killer.Position()
+			ki.KillerX = kp.X
+			ki.KillerY = kp.Y
+		}
+		st.kills = append(st.kills, ki)
 	})
 
 	// WeaponFire for heatmaps / shots
@@ -843,6 +860,11 @@ func parseDemo(demoPath string) (*Analysis, error) {
 		for i, v := range nb.trajectory {
 			traj[i] = Pos{X: v.X, Y: v.Y, Z: v.Z}
 		}
+		landX, landY := nb.startX, nb.startY
+		if len(traj) > 0 {
+			last := traj[len(traj)-1]
+			landX, landY = last.X, last.Y
+		}
 		st.nades = append(st.nades, NadeInfo{
 			ID:           nb.id,
 			Tick:         p.GameState().IngameTick(),
@@ -859,6 +881,8 @@ func parseDemo(demoPath string) (*Analysis, error) {
 			ThrowerPitch: nb.throwerPitch,
 			ThrowerYaw:   nb.throwerYaw,
 			ThrowerRoll:  0,
+			LandX:        landX,
+			LandY:        landY,
 		})
 		delete(st.activeNades, id)
 	})
