@@ -213,6 +213,7 @@
             <tbody id="players-tbody" class="divide-y divide-slate-800"></tbody>
           </table>
         </div>
+        <div class="px-1 text-[10px] text-slate-500 mt-1">Click any player's <b>name</b> (in table or kills) for full per-player profile modal with everything the library exposes for that match (aggregated stats, sampled properties, filtered events, economy, etc.).</div>
       </div>
 
       <div id="panel-viewmodels" class="tab-panel hidden">
@@ -356,6 +357,61 @@
         <button id="modal-btn-png" class="px-3 py-1.5 text-sm rounded-2xl border border-slate-600 hover:bg-slate-800">PNG</button>
       </div>
       <div class="mt-2 text-[10px] text-slate-500">Preview approximates in-game appearance (static pose). Use the copied commands or code in CS2 console / crosshair menu.</div>
+    </div>
+  </div>
+
+  <!-- Player Profile Modal - detailed per-player match breakdown -->
+  <div id="player-profile-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onclick="if (event.target.id === 'player-profile-modal') hidePlayerProfile()">
+    <div class="cs-card w-full max-w-5xl rounded-3xl p-5 border border-slate-700 max-h-[92vh] overflow-auto" onclick="event.stopImmediatePropagation()">
+      <div class="flex items-start justify-between mb-4">
+        <div>
+          <div id="profile-name" class="text-3xl font-semibold text-emerald-300"></div>
+          <div id="profile-meta" class="text-sm text-slate-400 mt-0.5"></div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="hidePlayerProfile()" class="text-slate-400 hover:text-white text-2xl leading-none px-2">×</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <!-- Core Stats -->
+        <div class="cs-card p-3">
+          <div class="section-title text-xs mb-2">Core Stats</div>
+          <div id="profile-core" class="text-sm space-y-0.5"></div>
+        </div>
+
+        <!-- Combat & Accuracy -->
+        <div class="cs-card p-3">
+          <div class="section-title text-xs mb-2">Combat &amp; Accuracy</div>
+          <div id="profile-combat" class="text-sm space-y-0.5"></div>
+        </div>
+
+        <!-- Economy, Utility, Special -->
+        <div class="cs-card p-3">
+          <div class="section-title text-xs mb-2">Economy, Utility &amp; Special</div>
+          <div id="profile-utility" class="text-sm space-y-0.5"></div>
+          <div id="profile-gear" class="mt-2 pt-2 border-t border-slate-700 text-xs"></div>
+        </div>
+      </div>
+
+      <!-- In-Match Events involving this player -->
+      <div class="mt-4">
+        <div class="flex items-center justify-between mb-1.5">
+          <div class="section-title text-xs">Events involving player</div>
+          <div class="flex gap-1 text-[10px]">
+            <button onclick="filterProfileEvents('all')" class="px-1.5 py-0 bg-slate-800 hover:bg-slate-700 rounded">All</button>
+            <button onclick="filterProfileEvents('kills')" class="px-1.5 py-0 bg-slate-800 hover:bg-slate-700 rounded">Kills</button>
+            <button onclick="filterProfileEvents('nades')" class="px-1.5 py-0 bg-slate-800 hover:bg-slate-700 rounded">Nades</button>
+            <button onclick="filterProfileEvents('bomb')" class="px-1.5 py-0 bg-slate-800 hover:bg-slate-700 rounded">Bomb</button>
+            <button onclick="filterProfileEvents('shots')" class="px-1.5 py-0 bg-slate-800 hover:bg-slate-700 rounded">Shots</button>
+          </div>
+        </div>
+        <div id="profile-events" class="cs-card p-2 text-xs max-h-52 overflow-auto font-mono bg-slate-950"></div>
+      </div>
+
+      <div class="mt-3 text-[10px] text-slate-500">
+        Aggregated from events (Kill, PlayerHurt, WeaponFire, Bomb*, Chat, etc.) + sampled Player properties (viewmodel, crosshair, clan, MVPs, equipment values, etc.) + library helpers. Click events to highlight in other tabs if applicable.
+      </div>
     </div>
   </div>
 
@@ -604,8 +660,9 @@
       tb.innerHTML = '';
       sorted.forEach(p => {
         const tr = document.createElement('tr');
+        const nameHtml = `<button class="font-medium text-left hover:text-emerald-400 hover:underline" onclick="event.stopImmediatePropagation(); showPlayerProfile(${p.steamId64 || 0}, '${escapeHtml(p.name).replace(/'/g, "\\'")}')">${escapeHtml(p.name)}</button>`;
         tr.innerHTML = `
-          <td class="font-medium">${escapeHtml(p.name)}</td>
+          <td>${nameHtml}</td>
           <td><span class="px-1.5 py-px rounded text-xs ${p.team==='T'?'bg-orange-900/70 text-orange-300':'bg-sky-900/70 text-sky-300'}">${p.team}</span></td>
           <td class="text-right font-semibold">${p.kills}</td>
           <td class="text-right">${p.deaths}</td>
@@ -621,6 +678,9 @@
           <td class="text-right">${p.utilityDamage||0}</td>
           <td class="text-right">${p.flashAssists||0}</td>
         `;
+        // also make whole row open profile (except if clicking other things later)
+        tr.onclick = () => showPlayerProfile(p.steamId64 || 0, p.name);
+        tr.style.cursor = 'pointer';
         tb.appendChild(tr);
       });
       updatePlayersSortIndicators();
@@ -1049,6 +1109,152 @@ cl_crosshair_recoil "${b(ch.followRecoil)}"
 `;
     }
 
+    // ===== Player Profile Modal logic =====
+    let currentProfilePlayer = null;
+    let profileFilter = 'all';
+
+    function showPlayerProfile(steamId64, nameFallback) {
+      const modal = document.getElementById('player-profile-modal');
+      if (!modal || !currentAnalysis) return;
+
+      const players = currentAnalysis.players || [];
+      let p = players.find(pp => (pp.steamId64 || 0) === steamId64);
+      if (!p && nameFallback) {
+        p = players.find(pp => pp.name === nameFallback);
+      }
+      if (!p) {
+        // fallback create minimal
+        p = { name: nameFallback || 'Unknown', steamId64: steamId64 || 0, team: '?', kills:0, deaths:0 };
+      }
+      currentProfilePlayer = p;
+      profileFilter = 'all';
+
+      // header
+      document.getElementById('profile-name').textContent = p.name || 'Unknown';
+      const meta = document.getElementById('profile-meta');
+      const steam = p.steamId64 ? p.steamId64 : '';
+      meta.innerHTML = `
+        <span class="px-1.5 py-px rounded text-xs ${p.team==='T'?'bg-orange-900/70 text-orange-300':'bg-sky-900/70 text-sky-300'}">${p.team || '?'}</span>
+        ${steam ? ` <a href="https://steamcommunity.com/profiles/${steam}" target="_blank" class="text-emerald-400 hover:underline">steam://${steam}</a>` : ''}
+      `;
+
+      // Core stats
+      const core = document.getElementById('profile-core');
+      const kd = (p.deaths || 0) > 0 ? (p.kills / p.deaths).toFixed(2) : (p.kills || 0);
+      core.innerHTML = `
+        <div>K/D/A: <b>${p.kills || 0}/${p.deaths || 0}/${p.assists || 0}</b> <span class="text-slate-500">(KDR ${kd})</span></div>
+        <div>Damage / ADR: <b>${p.damage || 0}</b> / <b>${(p.adr || 0).toFixed(1)}</b></div>
+        <div>HS / HS%: <b>${p.headshots || 0}</b> / <b>${(p.hsPercent || 0).toFixed(0)}%</b></div>
+        <div>Acc% (guns): <b>${(p.accuracy || 0).toFixed(0)}%</b> (${p.hits || 0}/${p.shots || 0})</div>
+        <div>3K/4K/5K: <b>${p.threeKs || 0}/${p.fourKs || 0}/${p.fiveKs || 0}</b></div>
+      `;
+
+      // Combat
+      const combat = document.getElementById('profile-combat');
+      combat.innerHTML = `
+        <div>Utility DMG: <b>${p.utilityDamage || 0}</b></div>
+        <div>Flash Assists: <b>${p.flashAssists || 0}</b></div>
+        <div>Plants / Defuses: <b>${p.plants || 0}</b> / <b>${p.defuses || 0}</b></div>
+        <div>MVPs (if avail): <b>${p.mvps || 0}</b></div>
+      `;
+
+      // Utility / special + gear
+      const util = document.getElementById('profile-utility');
+      util.innerHTML = `
+        <div>Viewmodel FOV: <b>${(p.viewmodelFOV || 0).toFixed(1)}</b></div>
+        <div>Offset: <span class="font-mono text-xs">${(p.viewmodelOffset && p.viewmodelOffset.X != null) ? p.viewmodelOffset.X.toFixed(1)+','+p.viewmodelOffset.Y.toFixed(1)+','+p.viewmodelOffset.Z.toFixed(1) : '—'}</span></div>
+      `;
+      const gear = document.getElementById('profile-gear');
+      const ch = p.crosshairCode ? `<div class="mt-1">Crosshair: <code class="text-emerald-300 cursor-pointer" onclick="copyCrosshairCode('${p.crosshairCode}')">${escapeHtml(p.crosshairCode)}</code> <button onclick="event.stopImmediatePropagation(); showCrosshairFromProfile('${p.crosshairCode}', this)" class="text-[9px] px-1 border border-slate-600 rounded">preview</button></div>` : '';
+      gear.innerHTML = `
+        <div>Clan: <b>${escapeHtml(p.clanTag || '—')}</b></div>
+        ${ch}
+      `;
+
+      // initial events
+      renderProfileEvents();
+
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function showPlayerProfileByName(name) {
+      if (!name) return;
+      showPlayerProfile(0, name);
+    }
+
+    function hidePlayerProfile() {
+      const modal = document.getElementById('player-profile-modal');
+      modal.classList.remove('flex');
+      modal.classList.add('hidden');
+      currentProfilePlayer = null;
+    }
+
+    function filterProfileEvents(type) {
+      profileFilter = type;
+      renderProfileEvents();
+    }
+
+    function renderProfileEvents() {
+      const el = document.getElementById('profile-events');
+      if (!el || !currentProfilePlayer || !currentAnalysis) {
+        el.innerHTML = '<div class="text-slate-500">No data.</div>';
+        return;
+      }
+      const p = currentProfilePlayer;
+      const name = p.name;
+      let events = [];
+
+      const kills = (currentAnalysis.kills || []).filter(k => k.killer === name || k.victim === name || k.assister === name);
+      const nades = (currentAnalysis.nades || []).filter(n => n.thrower === name);
+      const bombs = (currentAnalysis.bombEvents || []).filter(b => b.player === name);
+      const shots = (currentAnalysis.shots || []).filter(s => s.player === name);
+
+      if (profileFilter === 'all' || profileFilter === 'kills') {
+        kills.slice(0, 30).forEach(k => events.push({t:'K', txt: `${k.tick} R${k.round} ${k.killer}→${k.victim} ${k.weapon}${k.headshot?' HS':''}${k.wallbang?' WB':''}` }));
+      }
+      if (profileFilter === 'all' || profileFilter === 'nades') {
+        nades.slice(0, 20).forEach(n => events.push({t:'N', txt: `${n.tick} R${n.round} threw ${n.weapon} @(${n.startX|0},${n.startY|0})` }));
+      }
+      if (profileFilter === 'all' || profileFilter === 'bomb') {
+        bombs.forEach(b => events.push({t:'B', txt: `${b.tick} R${b.round} ${b.type} by ${b.player}` }));
+      }
+      if (profileFilter === 'all' || profileFilter === 'shots') {
+        shots.slice(0, 15).forEach(s => events.push({t:'S', txt: `${s.tick} R${s.round} fired ${s.weapon}` }));
+      }
+
+      if (events.length === 0) {
+        el.innerHTML = '<div class="text-slate-500">No matching events for this filter.</div>';
+        return;
+      }
+      // sort by tick if possible
+      events.sort((a,b) => {
+        const ta = parseInt(a.txt) || 0; const tb = parseInt(b.txt) || 0; return ta-tb;
+      });
+      el.innerHTML = events.map(e => `<div class="py-px border-l-2 pl-1 ${e.t==='K'?'border-red-600': e.t==='N'?'border-purple-500': e.t==='B'?'border-amber-500':'border-slate-600'}">${e.txt}</div>`).join('');
+    }
+
+    function copyCrosshairCode(code) {
+      navigator.clipboard.writeText(code).then(() => alert('copied')).catch(() => prompt('Copy:', code));
+    }
+    function showCrosshairFromProfile(code, btn) {
+      // find the crosshair data if possible from current player or just show raw code modal? simple: use showCrosshairModal if we can
+      // for simplicity, alert or open crosshair tab? Use existing if we have decoded, else fallback
+      const p = currentProfilePlayer;
+      if (p && p.crosshair) {
+        const modal = document.getElementById('crosshair-modal');
+        // reuse
+        document.getElementById('modal-cross-code').textContent = code || '';
+        const bigC = document.getElementById('modal-cross-canvas');
+        drawCrosshair(bigC, p.crosshair, 4.0);
+        // simple meta
+        document.getElementById('modal-cross-meta').innerHTML = `<div>Length: ${p.crosshair.length} Gap: ${p.crosshair.gap} etc.</div>`;
+        modal.classList.remove('hidden'); modal.classList.add('flex');
+      } else {
+        prompt('Crosshair code (no decoded data):', code);
+      }
+    }
+
     function renderRounds(rounds) {
       const grid = document.getElementById('rounds-grid');
       const summary = document.getElementById('rounds-summary');
@@ -1169,14 +1375,17 @@ cl_crosshair_recoil "${b(ch.followRecoil)}"
         const tr = document.createElement('tr');
         const hs = k.headshot ? ' <span class="text-red-400">HS</span>' : '';
         const wb = k.wallbang ? ' <span class="text-amber-400">WB</span>' : '';
+        const killerHtml = `<span class="cursor-pointer hover:text-emerald-400" onclick="event.stopImmediatePropagation(); showPlayerProfileByName('${escapeHtml(k.killer).replace(/'/g, "\\'")}')">${escapeHtml(k.killer)}</span>`;
+        const victimHtml = `<span class="cursor-pointer hover:text-emerald-400" onclick="event.stopImmediatePropagation(); showPlayerProfileByName('${escapeHtml(k.victim).replace(/'/g, "\\'")}')">${escapeHtml(k.victim)}</span>`;
+        const assisterHtml = k.assister ? `via <span class="cursor-pointer hover:text-emerald-400" onclick="event.stopImmediatePropagation(); showPlayerProfileByName('${escapeHtml(k.assister).replace(/'/g, "\\'")}')">${escapeHtml(k.assister)}</span>` : '';
         tr.innerHTML = `
           <td class="text-slate-400 font-mono text-xs">${k.tick}</td>
           <td class="text-xs text-slate-400">${k.round}</td>
-          <td>${escapeHtml(k.killer)}</td>
+          <td>${killerHtml}</td>
           <td class="text-red-400">→</td>
-          <td>${escapeHtml(k.victim)}</td>
+          <td>${victimHtml}</td>
           <td class="font-medium">${escapeHtml(k.weapon)}${hs}${wb}</td>
-          <td class="text-xs text-slate-400">${k.assister ? 'via ' + escapeHtml(k.assister) : ''}</td>
+          <td class="text-xs text-slate-400">${assisterHtml}</td>
         `;
         tb.appendChild(tr);
       });

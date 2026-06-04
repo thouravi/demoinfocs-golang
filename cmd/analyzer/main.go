@@ -147,6 +147,13 @@ type PlayerStat struct {
 	ViewmodelFOV    float32           `json:"viewmodelFOV"`
 	CrosshairCode   string            `json:"crosshairCode,omitempty"`
 	Crosshair       *common.Crosshair `json:"crosshair,omitempty"`
+
+	// Additional profile info
+	ClanTag     string `json:"clanTag,omitempty"`
+	Plants      int    `json:"plants"`
+	Defuses     int    `json:"defuses"`
+	// MVPs if sampled from scoreboard (may be 0)
+	MVPs int `json:"mvps"`
 }
 
 // RoundInfo
@@ -402,6 +409,9 @@ func (st *parseState) ensurePlayer(p *common.Player) *PlayerStat {
 		if ch := p.Crosshair(); ch != nil {
 			ps.Crosshair = ch
 		}
+		ps.ClanTag = p.ClanTag()
+		// Sample scoreboard stats too (may be updated periodically)
+		ps.MVPs = p.MVPs()
 	}
 
 	return ps
@@ -876,6 +886,9 @@ func parseDemo(demoPath string) (*Analysis, error) {
 			if st.currentRound > 0 {
 				st.currentBombPlant = e.Player.Name
 			}
+			if ps := st.ensurePlayer(e.Player); ps != nil {
+				ps.Plants++
+			}
 		}
 	})
 	p.RegisterEventHandler(func(e events.BombDefused) {
@@ -890,6 +903,9 @@ func parseDemo(demoPath string) (*Analysis, error) {
 			})
 			if st.currentRound > 0 {
 				st.currentBombDefuse = e.Player.Name
+			}
+			if ps := st.ensurePlayer(e.Player); ps != nil {
+				ps.Defuses++
 			}
 		}
 	})
